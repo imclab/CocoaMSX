@@ -49,7 +49,8 @@
 
 void archUpdateMenu(int show);
 
-int insertCartridge(Properties* properties, int drive, const char* fname, const char* inZipFile, RomType romType, int forceAutostart) {
+int insertCartridge(Emulator *emulator, int drive, const char* fname, const char* inZipFile, RomType romType, int forceAutostart) {
+    Properties *properties = emulatorGetProperties(emulator);
     int autostart = forceAutostart == 1 || properties->cartridge.autoReset;
     int noautostart = forceAutostart == -1;
     char romName[512] = "";
@@ -58,7 +59,7 @@ int insertCartridge(Properties* properties, int drive, const char* fname, const 
 
     if (fname) strcpy(filename, fname);
     
-    emulatorResetMixer();
+    emulatorResetMixer(emulator);
 
     if (isZip) {
         if (inZipFile != NULL) {
@@ -251,13 +252,13 @@ int insertCartridge(Properties* properties, int drive, const char* fname, const 
     }
 
     if (autostart && !noautostart) {
-        emulatorStop();
-        emulatorStart(NULL);
+        emulatorStop(emulator);
+        emulatorStart(emulator, NULL);
     }
-    else if (emulatorGetState() != EMU_STOPPED) {
-        emulatorSuspend();
+    else if (emulatorGetState(emulator) != EMU_STOPPED) {
+        emulatorSuspend(emulator);
         boardChangeCartridge(drive, romType, filename, isZip ? romName : NULL);
-        emulatorResume();
+        emulatorResume(emulator);
     }
     else {
         boardChangeCartridge(drive, romType, filename, isZip ? romName : NULL);
@@ -266,7 +267,8 @@ int insertCartridge(Properties* properties, int drive, const char* fname, const 
     return 1;
 }
 
-int insertDiskette(Properties* properties, int drive, const char* fname, const char* inZipFile, int forceAutostart) {
+int insertDiskette(Emulator *emulator, int drive, const char* fname, const char* inZipFile, int forceAutostart) {
+    Properties *properties = emulatorGetProperties(emulator);
     char diskName[512] = "";
     char filename[512] = "";
     int autostart = forceAutostart == 1 || (drive == 0 ? properties->diskdrive.autostartA : 0);
@@ -275,7 +277,7 @@ int insertDiskette(Properties* properties, int drive, const char* fname, const c
 
     if (fname) strcpy(filename, fname);
 
-    emulatorResetMixer();
+    emulatorResetMixer(emulator);
 
     if (isZip) {
         if (inZipFile != NULL) {
@@ -371,19 +373,20 @@ int insertDiskette(Properties* properties, int drive, const char* fname, const c
 #endif
 
     if (autostart && !noautostart) {
-        emulatorStop();
-        emulatorStart(NULL);
+        emulatorStop(emulator);
+        emulatorStart(emulator, NULL);
     }
-    else if (emulatorGetState() != EMU_STOPPED) {
-        emulatorSuspend();
+    else if (emulatorGetState(emulator) != EMU_STOPPED) {
+        emulatorSuspend(emulator);
         boardChangeDiskette(drive, filename, isZip ? diskName : NULL);
-        emulatorResume();
+        emulatorResume(emulator);
     }
 
     return 1;
 }
 
-int insertCassette(Properties* properties, int drive, const char* fname, const char* inZipFile, int forceAutostart) {
+int insertCassette(Emulator *emulator, int drive, const char* fname, const char* inZipFile, int forceAutostart) {
+    Properties *properties = emulatorGetProperties(emulator);
     int autostart = forceAutostart == 1;
     int noautostart = forceAutostart == -1;
     char tapeName[512] = "";
@@ -428,19 +431,20 @@ int insertCassette(Properties* properties, int drive, const char* fname, const c
 #endif
 
     if (autostart && !noautostart) {
-        emulatorStart(NULL);
+        emulatorStart(emulator, NULL);
     }
-    else if (emulatorGetState() != EMU_STOPPED) {
-        emulatorSuspend();
+    else if (emulatorGetState(emulator) != EMU_STOPPED) {
+        emulatorSuspend(emulator);
         boardChangeCassette(0, filename, isZip ? tapeName : NULL);
-        emulatorResume();
+        emulatorResume(emulator);
     }
 
     return 1;
 }
 
-static int insertDisketteOrCartridge(Properties* properties, int drive, const char* fname, int forceAutostart) 
+static int insertDisketteOrCartridge(Emulator *emulator, int drive, const char* fname, int forceAutostart)
 {
+    Properties *properties = emulatorGetProperties(emulator);
     int countDsx;
     int countDi1;
     int countDi2;
@@ -567,17 +571,17 @@ static int insertDisketteOrCartridge(Properties* properties, int drive, const ch
 
     if (fileListDsk == NULL && fileListCas == NULL) {
         free(fileListRom);
-        return insertCartridge(properties, drive, fname, NULL, ROM_UNKNOWN, 0);
+        return insertCartridge(emulator, drive, fname, NULL, ROM_UNKNOWN, 0);
     }
 
     if (fileListRom == NULL && fileListCas == NULL) {
         free(fileListDsk);
-        return insertDiskette(properties, drive, fname, NULL, 0);
+        return insertDiskette(emulator, drive, fname, NULL, 0);
     }
 
     if (fileListRom == NULL && fileListDsk == NULL) {
         free(fileListCas);
-        return insertCassette(properties, 0, fname, NULL, 0);
+        return insertCassette(emulator, 0, fname, NULL, 0);
     }
 
     for (i = 0; i < countRom; i++) {
@@ -605,17 +609,17 @@ static int insertDisketteOrCartridge(Properties* properties, int drive, const ch
             isFileExtension(filename, ".mx1") || isFileExtension(filename, ".mx2") || 
             isFileExtension(filename, ".col") || 
             isFileExtension(filename, ".sg") || isFileExtension(filename, ".sc")) {
-            success = insertCartridge(properties, drive, fname, filename, romType, autostart);
+            success = insertCartridge(emulator, drive, fname, filename, romType, autostart);
         }
         else if (isFileExtension(filename, ".dsk") || 
                 isFileExtension(filename, ".di1") || isFileExtension(filename, ".di2") || 
                 isFileExtension(filename, ".360") || isFileExtension(filename, ".720") || 
                 isFileExtension(filename, ".sf7")) 
         {
-            success = insertDiskette(properties, drive, fname, filename, autostart);
+            success = insertDiskette(emulator, drive, fname, filename, autostart);
         }
         else if (isFileExtension(filename, ".cas")) {
-            success = insertCassette(properties, 0, fname, filename, autostart);
+            success = insertCassette(emulator, 0, fname, filename, autostart);
         }
     }
 
@@ -639,12 +643,13 @@ static int insertDisketteOrCartridge(Properties* properties, int drive, const ch
     return success;
 }
 
-int tryLaunchUnknownFile(Properties* properties, const char* fileName, int forceAutostart) 
+int tryLaunchUnknownFile(Emulator *emulator, const char* fileName, int forceAutostart)
 {
+    Properties *properties = emulatorGetProperties(emulator);
     int rv = 0;
 
     if (isFileExtension(fileName, ".sta")) {
-        emulatorStart(fileName);
+        emulatorStart(emulator, fileName);
         return 1;
     }
 
@@ -653,7 +658,7 @@ int tryLaunchUnknownFile(Properties* properties, const char* fileName, int force
         isFileExtension(fileName, ".col") || 
         isFileExtension(fileName, ".sg") || isFileExtension(fileName, ".sc")) 
     {
-        rv = insertCartridge(properties, properties->cartridge.quickStartDrive, fileName, NULL, ROM_UNKNOWN, forceAutostart);
+        rv = insertCartridge(emulator, properties->cartridge.quickStartDrive, fileName, NULL, ROM_UNKNOWN, forceAutostart);
     }
     else if (isFileExtension(fileName, ".dsk") || 
              isFileExtension(fileName, ".di1") || isFileExtension(fileName, ".di2") || 
@@ -670,14 +675,14 @@ int tryLaunchUnknownFile(Properties* properties, const char* fileName, int force
             fclose(f);
         }
 
-        rv = insertDiskette(properties, drive, fileName, NULL, forceAutostart);
+        rv = insertDiskette(emulator, drive, fileName, NULL, forceAutostart);
     }
     else if (isFileExtension(fileName, ".cas")) {
         if (properties->cassette.rewindAfterInsert) tapeRewindNextInsert();
-        rv = insertCassette(properties, 0, fileName, NULL, forceAutostart);
+        rv = insertCassette(emulator, 0, fileName, NULL, forceAutostart);
     }
     else if (isFileExtension(fileName, ".zip")) {
-        rv = insertDisketteOrCartridge(properties, properties->cartridge.quickStartDrive, fileName, forceAutostart);
+        rv = insertDisketteOrCartridge(emulator, properties->cartridge.quickStartDrive, fileName, forceAutostart);
     }
     
     archUpdateMenu(0);

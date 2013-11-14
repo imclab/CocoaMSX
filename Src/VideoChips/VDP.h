@@ -30,6 +30,7 @@
 
 #include "MsxTypes.h"
 #include "VideoManager.h"
+#include "Emulator.h"
 
 typedef enum { VDP_V9938, VDP_V9958, VDP_TMS9929A, VDP_TMS99x8A } VdpVersion;
 typedef enum { VDP_SYNC_AUTO, VDP_SYNC_50HZ, VDP_SYNC_60HZ } VdpSyncMode; 
@@ -37,7 +38,7 @@ typedef enum { VDP_MSX, VDP_SVI, VDP_COLECO, VDP_SG1000 } VdpConnector;
 
 extern const char* VdpNames[];
 
-void vdpCreate(VdpConnector connector, VdpVersion version, VdpSyncMode sync, int vramPages);
+void vdpCreate(Emulator *emulator, VdpConnector connector, VdpVersion version, VdpSyncMode sync, int vramPages);
 
 int  vdpGetRefreshRate();
 
@@ -63,7 +64,7 @@ int vdpRegisterDaConverter(VdpDaCallbacks* callbacks, void* ref, VideoMode video
 void vdpUnregisterDaConverter(int vdpDaHandle);
 
 /* The following methods needs target dependent implementation */
-extern void RefreshScreen(int);
+extern void RefreshScreen(Emulator *emulator, int screenMode);
 
 #endif
 

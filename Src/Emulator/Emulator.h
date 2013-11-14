@@ -34,31 +34,37 @@
 
 typedef enum { EMU_RUNNING, EMU_PAUSED, EMU_STOPPED, EMU_SUSPENDED, EMU_STEP } EmuState;
 
-void emulatorInit(Properties* properties, Mixer* mixer);
-void emulatorExit();
+typedef struct Emulator Emulator;
 
-void emuEnableSynchronousUpdate(int enable);
+Emulator * emulatorCreate(Properties *properties, Mixer *mixer);
+Properties * emulatorGetProperties(const Emulator *emulator);
+Mixer * emulatorGetMixer(const Emulator *emulator);
+void emulatorSetProperties(Emulator *emulator, Properties* properties);
+void emulatorSetMixer(Emulator *emulator, Mixer *mixer);
+void emulatorDestroy(Emulator *emulator);
 
-void emulatorSetFrequency(int logFrequency, int* frequency);
-void emulatorRestartSound();
-void emulatorSuspend();
-void emulatorResume();
-void emulatorDoResume();
-void emulatorRestart();
-void emulatorStart(const char* stateName);
-void emulatorStop();
-void emulatorSetMaxSpeed(int enable);
-int  emulatorGetMaxSpeed();
-void emulatorPlayReverse(int enable);
-int  emulatorGetPlayReverse();
-int emulatorGetCpuOverflow();
-int emulatorGetSyncPeriod();
-EmuState emulatorGetState();
-void emulatorSetState(EmuState state);
-UInt32 emulatorGetCpuSpeed();
-UInt32 emulatorGetCpuUsage();
-void emulatorResetMixer();
-int emulatorGetCurrentScreenMode();
+void emulatorEnableSynchronousUpdate(Emulator *emulator, int enable);
+
+void emulatorSetFrequency(Emulator *emulator, int logFrequency, int* frequency);
+void emulatorRestartSound(Emulator *emulator);
+void emulatorSuspend(Emulator *emulator);
+void emulatorResume(Emulator *emulator);
+void emulatorDoResume(Emulator *emulator);
+void emulatorRestart(Emulator *emulator);
+void emulatorStart(Emulator *emulator, const char* stateName);
+void emulatorStop(Emulator *emulator);
+void emulatorSetMaxSpeed(Emulator *emulator, int enable);
+int  emulatorGetMaxSpeed(const Emulator *emulator);
+void emulatorSetPlayReverse(Emulator *emulator, int enable);
+int  emulatorGetPlayReverse(const Emulator *emulator);
+int emulatorGetCpuOverflow(Emulator *emulator);
+int emulatorGetSyncPeriod(const Emulator *emulator);
+EmuState emulatorGetState(const Emulator *emulator);
+void emulatorSetState(Emulator *emulator, EmuState state);
+UInt32 emulatorGetCpuSpeed(const Emulator *emulator);
+UInt32 emulatorGetCpuUsage(const Emulator *emulator);
+void emulatorResetMixer(Emulator *emulator);
+int emulatorGetCurrentScreenMode(const Emulator *emulator);
 
 #endif
 

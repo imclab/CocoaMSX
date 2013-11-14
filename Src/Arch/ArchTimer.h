@@ -29,9 +29,10 @@
 #define ARCH_TIMER_H
 
 #include "MsxTypes.h"
+#include "Emulator.h"
 
 UInt32 archGetSystemUpTime(UInt32 frequency);
-void* archCreateTimer(int period, int (*timerCallback)(void*));
+void* archCreateTimer(Emulator *emulator, int (*timerCallback)(Emulator *));
 void archTimerDestroy(void* timer);
 UInt32 archGetHiresTimer();
 

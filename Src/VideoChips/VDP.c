@@ -265,6 +265,7 @@ static void RefreshLine12(VDP*, int, int, int);
 static void sync(VDP*, UInt32);
 
 struct VDP {
+    Emulator *emulator;
     VdpCmdState* cmdEngine;
     void (*RefreshLine)(VDP*, int, int, int);
     int    vdpConnector;
@@ -613,7 +614,7 @@ static void onDisplay(VDP* vdp, UInt32 time)
         boardClearInt(INT_IE1);
     }
     vdp->vdpStatus[2] ^= 0x02;
-    RefreshScreen(vdp->screenMode);
+    RefreshScreen(vdp->emulator, vdp->screenMode);
 
     vdpBlink(vdp);
 
@@ -1941,7 +1942,7 @@ static void videoDisable(VDP* vdp)
     vdp->videoEnabled = 0;
 }
 
-void vdpCreate(VdpConnector connector, VdpVersion version, VdpSyncMode sync, int vramPages)
+void vdpCreate(Emulator *emulator, VdpConnector connector, VdpVersion version, VdpSyncMode sync, int vramPages)
 {
     DeviceCallbacks callbacks = {
         (DeviceCallback)destroy,
@@ -1969,6 +1970,7 @@ void vdpCreate(VdpConnector connector, VdpVersion version, VdpSyncMode sync, int
 
     initPalette(vdp);
 
+    vdp->emulator = emulator;
     vdp->deviceHandle = deviceManagerRegister(ROM_V9958, &callbacks, vdp);
 
     vdp->timerDisplay       = boardTimerCreate((BoardTimerCb)onDisplay, vdp);

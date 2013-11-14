@@ -174,7 +174,8 @@ static UInt8 testPort(void* dummy, UInt16 ioPort)
     return 0x27;
 }
 
-int msxCreate(Machine* machine, 
+int msxCreate(Emulator *emulator,
+              Machine* machine,
               VdpSyncMode vdpSyncMode,
               BoardInfo* boardInfo)
 {
@@ -234,7 +235,7 @@ int msxCreate(Machine* machine,
 
     msxRam = NULL;
 
-    vdpCreate(VDP_MSX, machine->video.vdpVersion, vdpSyncMode, machine->video.vramSize / 0x4000);
+    vdpCreate(emulator, VDP_MSX, machine->video.vdpVersion, vdpSyncMode, machine->video.vramSize / 0x4000);
 
     for (i = 0; i < 4; i++) {
         slotSetSubslotted(i, machine->slot[i].subslotted);

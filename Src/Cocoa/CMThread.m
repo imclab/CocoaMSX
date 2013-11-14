@@ -23,6 +23,7 @@
 #import "CMThread.h"
 
 #include <pthread.h>
+#include "Emulator.h"
 
 #pragma mark - CMThreadArg
 
@@ -32,6 +33,7 @@
 {
 @public
     CMThreadEntryPoint entryPoint;
+    Emulator *emulator;
 }
 @end
 
@@ -41,17 +43,26 @@
 
 #pragma mark - CMThread
 
+@interface CMThread ()
+
+- (void)start;
+- (void)join;
++ (void)sleepMilliseconds:(NSInteger)ms;
+
+@property (nonatomic, retain) CMThreadArg *arg;
+
+@end
+
 @implementation CMThread
+
+@synthesize arg;
 
 static void* pThreadCallback(void* data);
 
-- (id)initWithEntryPoint:(CMThreadEntryPoint)entryPoint;
+- (id)init
 {
     if ((self = [super init]))
     {
-        arg = [[CMThreadArg alloc] init];
-        arg->entryPoint = entryPoint;
-        
         int status = pthread_attr_init(&attr);
         assert(!status);
     }
@@ -61,7 +72,7 @@ static void* pThreadCallback(void* data);
 
 - (void)dealloc
 {
-    [arg release];
+    [self setArg:nil];
     
     pthread_attr_destroy(&attr);
     
@@ -90,7 +101,7 @@ static void *pThreadCallback(void *data)
     
     @autoreleasepool
     {
-        arg->entryPoint();
+        arg->entryPoint(arg->emulator);
     }
     
     return NULL;
@@ -99,9 +110,15 @@ static void *pThreadCallback(void *data)
 
 #pragma mark - blueMSX Callbacks
 
-void* archThreadCreate(void (*entryPoint)(), int priority)
+void* archThreadCreate(void (*entryPoint)(Emulator *), Emulator *emulator, int priority)
 {
-    CMThread *thread = [[CMThread alloc] initWithEntryPoint:entryPoint];
+    CMThreadArg *arg = [[CMThreadArg alloc] init];
+    arg->entryPoint = entryPoint;
+    arg->emulator = emulator;
+    
+    CMThread *thread = [[CMThread alloc] init];
+    [thread setArg:arg];
+    
     [thread start];
     
     return thread;

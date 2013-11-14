@@ -33,6 +33,7 @@
 #include "Machine.h"
 #include "VDP.h"
 #include "AudioMixer.h"
+#include "Emulator.h"
 #include <stdio.h>
 
 typedef struct {
@@ -85,14 +86,14 @@ typedef struct {
 
 void boardInit(UInt32* systemTime);
 
-int boardRun(Machine* machine, 
-             BoardDeviceInfo* deviceInfo,
-             Mixer* mixer,
+int boardRun(Emulator *emulator,
+             Machine *machine,
+             BoardDeviceInfo deviceInfo,
              char* stateFile,
              int frequency,
              int reversePeriod,
              int reverseBufferCnt,
-             int (*syncCallback)(int, int));
+             int (*syncCallback)(Emulator *, int, int));
 
 void boardRewind();
 void boardEnableSnapshots(int enable);

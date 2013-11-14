@@ -357,9 +357,10 @@ static void loadState()
     sn76489LoadState(sn76489);
 }
 
-int adamCreate(Machine* machine, 
-                 VdpSyncMode vdpSyncMode,
-                 BoardInfo* boardInfo)
+int adamCreate(Emulator *emulator,
+               Machine* machine,
+               VdpSyncMode vdpSyncMode,
+               BoardInfo* boardInfo)
 {
     int success;
     int i;
@@ -404,7 +405,7 @@ int adamCreate(Machine* machine,
     if (vdpSyncMode == VDP_SYNC_AUTO) {
         vdpSyncMode = VDP_SYNC_60HZ;
     }
-    vdpCreate(VDP_COLECO, machine->video.vdpVersion, vdpSyncMode, machine->video.vramSize / 0x4000);
+    vdpCreate(emulator, VDP_COLECO, machine->video.vdpVersion, vdpSyncMode, machine->video.vramSize / 0x4000);
 
     colecoJoyIoCreate();
 

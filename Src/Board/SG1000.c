@@ -207,7 +207,8 @@ static void changeCartridge(void* ref, int cartNo, int inserted)
     }
 }
 
-int sg1000Create(Machine* machine, 
+int sg1000Create(Emulator *emulator,
+                 Machine* machine,
                  VdpSyncMode vdpSyncMode,
                  BoardInfo* boardInfo)
 {
@@ -258,7 +259,7 @@ int sg1000Create(Machine* machine,
     if (vdpSyncMode == VDP_SYNC_AUTO) {
         vdpSyncMode = VDP_SYNC_60HZ;
     }
-    vdpCreate(VDP_SG1000, machine->video.vdpVersion, vdpSyncMode, machine->video.vramSize / 0x4000);
+    vdpCreate(emulator, VDP_SG1000, machine->video.vdpVersion, vdpSyncMode, machine->video.vramSize / 0x4000);
 
     joyIo = sg1000JoyIoCreate();
     if (machine->board.type == BOARD_SC3000) {

@@ -32,7 +32,7 @@
 #import "CMCocoaSound.h"
 #import "CMInputDeviceLayout.h"
 
-#include "Properties.h"
+#include "Emulator.h"
 #include "VideoRender.h"
 
 NSString * const CMKeyboardLayoutPrefKey;
@@ -53,6 +53,7 @@ NSString * const CMKeyboardLayoutPrefKey;
     Mixer *mixer;
     Properties *properties;
     Video *video;
+    Emulator *emulator;
     
     CMCocoaInput *input;
     CMCocoaMouse *mouse;

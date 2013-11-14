@@ -28,12 +28,13 @@
 #ifndef COMMAND_LINE_H
 #define COMMAND_LINE_H
 
+#include "Emulator.h"
 #include "Properties.h"
 
 int emuCheckResetArgument(char* szLine);
 char* emuCheckThemeArgument(char* szLine);
 void emuCheckFullscreenArgument(Properties* properties, char* szLine);
-int emuTryStartWithArguments(Properties* properties, char* cmdLine, char *gamedir);
+int emuTryStartWithArguments(Emulator *emulator, char* cmdLine, char *gamedir);
 
 #endif
 

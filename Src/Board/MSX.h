@@ -30,7 +30,8 @@
  
 #include "Board.h"
 
-int msxCreate(Machine* machine, 
+int msxCreate(Emulator *emulator,
+              Machine* machine,
               VdpSyncMode vdpSyncMode,
               BoardInfo* boardInfo);
 

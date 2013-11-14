@@ -55,8 +55,9 @@ extern void PatchReset(BoardType boardType);
 
 static int pendingInt;
 static int boardType;
+static Emulator *boardEmulator = NULL;
 static Mixer* boardMixer = NULL;
-static int (*syncToRealClock)(int, int) = NULL;
+static int (*syncToRealClock)(Emulator *, int, int) = NULL;
 UInt32* boardSysTime;
 static UInt64 boardSysTime64;
 static UInt32 oldTime;
@@ -67,7 +68,7 @@ static BoardTimer* fdcTimer;
 static BoardTimer* syncTimer;
 static BoardTimer* mixerTimer;
 static BoardTimer* stateTimer;
-static BoardDeviceInfo* boardDeviceInfo;
+static BoardDeviceInfo boardDeviceInfo;
 static Machine* boardMachine;
 static BoardInfo boardInfo;
 static UInt32 boardRamSize;
@@ -508,7 +509,7 @@ static void onFdcDone(void* ref, UInt32 time)
 
 static void doSync(UInt32 time, int breakpointHit)
 {
-    int execTime = syncToRealClock(fdcActive, breakpointHit);
+    int execTime = syncToRealClock(boardEmulator, fdcActive, breakpointHit);
     if (execTime == -99) {
         boardInfo.stop(boardInfo.cpuRef);
         return;
@@ -566,23 +567,23 @@ int boardInsertExternalDevices()
 {
     int i;
     for (i = 0; i < 2; i++) {
-        if (boardDeviceInfo->carts[i].inserted) {
-            boardChangeCartridge(i, boardDeviceInfo->carts[i].type, 
-                                 boardDeviceInfo->carts[i].name,
-                                 boardDeviceInfo->carts[i].inZipName);
+        if (boardDeviceInfo.carts[i].inserted) {
+            boardChangeCartridge(i, boardDeviceInfo.carts[i].type,
+                                 boardDeviceInfo.carts[i].name,
+                                 boardDeviceInfo.carts[i].inZipName);
         }
     }
 
     for (i = 0; i < MAXDRIVES; i++) {
-        if (boardDeviceInfo->disks[i].inserted) {
-            boardChangeDiskette(i, boardDeviceInfo->disks[i].name,
-                                boardDeviceInfo->disks[i].inZipName);
+        if (boardDeviceInfo.disks[i].inserted) {
+            boardChangeDiskette(i, boardDeviceInfo.disks[i].name,
+                                boardDeviceInfo.disks[i].inZipName);
         }
     }
 
-    if (boardDeviceInfo->tapes[0].inserted) {
-        boardChangeCassette(0, boardDeviceInfo->tapes[0].name,
-                            boardDeviceInfo->tapes[0].inZipName);
+    if (boardDeviceInfo.tapes[0].inserted) {
+        boardChangeCassette(0, boardDeviceInfo.tapes[0].name,
+                            boardDeviceInfo.tapes[0].inZipName);
     }
     return 1;
 }
@@ -644,14 +645,14 @@ void boardEnableSnapshots(int enable)
     enableSnapshots = enable;
 }
 
-int boardRun(Machine* machine, 
-             BoardDeviceInfo* deviceInfo,
-             Mixer* mixer,
+int boardRun(Emulator *emulator,
+             Machine *machine,
+             BoardDeviceInfo deviceInfo,
              char* stateFile,
              int frequency,
              int reversePeriod,
              int reverseBufferCnt,
-             int (*syncCallback)(int, int))
+             int (*syncCallback)(Emulator *, int, int))
 {
     int loadState = 0;
     int success = 0;
@@ -661,7 +662,8 @@ int boardRun(Machine* machine,
     videoManagerReset();
     debugDeviceManagerReset();
 
-    boardMixer      = mixer;
+    boardEmulator   = emulator;
+    boardMixer      = emulatorGetMixer(emulator);
     boardDeviceInfo = deviceInfo;
     boardMachine    = machine;
 
@@ -686,7 +688,7 @@ int boardRun(Machine* machine,
         }
     }
 
-    boardType = machine->board.type;
+    boardType = boardMachine->board.type;
     PatchReset(boardType);
 
 #if 0
@@ -712,21 +714,26 @@ int boardRun(Machine* machine,
     case BOARD_MSX_T9769B:
     case BOARD_MSX_T9769C:
     case BOARD_MSX_FORTE_II:
-        success = msxCreate(machine, deviceInfo->video.vdpSyncMode, &boardInfo);
+        success = msxCreate(emulator,
+                            boardMachine, boardDeviceInfo.video.vdpSyncMode, &boardInfo);
         break;
     case BOARD_SVI:
-        success = sviCreate(machine, deviceInfo->video.vdpSyncMode, &boardInfo);
+        success = sviCreate(emulator,
+                            boardMachine, boardDeviceInfo.video.vdpSyncMode, &boardInfo);
         break;
     case BOARD_COLECO:
-        success = colecoCreate(machine, deviceInfo->video.vdpSyncMode, &boardInfo);
+        success = colecoCreate(emulator,
+                               boardMachine, boardDeviceInfo.video.vdpSyncMode, &boardInfo);
         break;
     case BOARD_COLECOADAM:
-        success = adamCreate(machine, deviceInfo->video.vdpSyncMode, &boardInfo);
+        success = adamCreate(emulator,
+                             boardMachine, boardDeviceInfo.video.vdpSyncMode, &boardInfo);
         break;
     case BOARD_SG1000:
     case BOARD_SC3000:
     case BOARD_SF7000:
-        success = sg1000Create(machine, deviceInfo->video.vdpSyncMode, &boardInfo);
+        success = sg1000Create(emulator,
+                               boardMachine, boardDeviceInfo.video.vdpSyncMode, &boardInfo);
         break;
     default:
         success = 0;
@@ -769,7 +776,7 @@ int boardRun(Machine* machine,
             boardTimerAdd(periodicTimer, boardSystemTime() + periodicInterval);
         }
 
-        syncToRealClock(0, 0);
+        syncToRealClock(boardEmulator, 0, 0);
 
         boardInfo.run(boardInfo.cpuRef);
 
@@ -872,7 +879,7 @@ void boardSetDataBus(UInt8 value, UInt8 defValue, int useDef) {
 
 static BoardType boardLoadState(void)
 {
-    BoardDeviceInfo* di = boardDeviceInfo;
+    BoardDeviceInfo* di = &boardDeviceInfo;
     SaveState* state;
     BoardType boardType;
     int   i;
@@ -931,7 +938,7 @@ static BoardType boardLoadState(void)
 
 void boardSaveState(const char* stateFile, int screenshot)
 {
-    BoardDeviceInfo* di = boardDeviceInfo;
+    BoardDeviceInfo* di = &boardDeviceInfo;
     char buf[128];
     time_t ltime;
     SaveState* state;
@@ -1126,17 +1133,15 @@ void boardChangeCartridge(int cartNo, RomType romType, char* cart, char* cartZip
         }
     }
 
-    if (boardDeviceInfo != NULL) {
-        int maxLen = sizeof(boardDeviceInfo->carts[cartNo].name) - 1;
-        
-        boardDeviceInfo->carts[cartNo].inserted = cart != NULL;
-        boardDeviceInfo->carts[cartNo].type = romType;
-        
-        if (boardDeviceInfo->carts[cartNo].name != cart)
-            strncpy(boardDeviceInfo->carts[cartNo].name, cart ? cart : "", maxLen);
-        if (boardDeviceInfo->carts[cartNo].inZipName != cartZip)
-            strncpy(boardDeviceInfo->carts[cartNo].inZipName, cartZip ? cartZip : "", maxLen);
-    }
+    int maxLen = sizeof(boardDeviceInfo.carts[cartNo].name) - 1;
+    
+    boardDeviceInfo.carts[cartNo].inserted = cart != NULL;
+    boardDeviceInfo.carts[cartNo].type = romType;
+    
+    if (boardDeviceInfo.carts[cartNo].name != cart)
+        strncpy(boardDeviceInfo.carts[cartNo].name, cart ? cart : "", maxLen);
+    if (boardDeviceInfo.carts[cartNo].inZipName != cartZip)
+        strncpy(boardDeviceInfo.carts[cartNo].inZipName, cartZip ? cartZip : "", maxLen);
 
     useRom     -= romTypeIsRom(currentRomType[cartNo]);
     useMegaRom -= romTypeIsMegaRom(currentRomType[cartNo]);
@@ -1180,9 +1185,9 @@ static void boardUpdateDisketteInfo()
 {
     int i;
     for (i = 0; i < MAXDRIVES; i++) {
-        if (boardDeviceInfo->disks[i].inserted) {
-            diskSetInfo(i, boardDeviceInfo->disks[i].name,
-                        boardDeviceInfo->disks[i].inZipName);
+        if (boardDeviceInfo.disks[i].inserted) {
+            diskSetInfo(i, boardDeviceInfo.disks[i].name,
+                        boardDeviceInfo.disks[i].inZipName);
         }
         else {
             diskSetInfo(i, NULL, NULL);
@@ -1200,12 +1205,10 @@ void boardChangeDiskette(int driveId, char* fileName, const char* fileInZipFile)
         fileInZipFile = NULL;
     }
 
-    if (boardDeviceInfo != NULL) {
-        boardDeviceInfo->disks[driveId].inserted = fileName != NULL;
+    boardDeviceInfo.disks[driveId].inserted = fileName != NULL;
 
-        strcpy(boardDeviceInfo->disks[driveId].name, fileName ? fileName : "");
-        strcpy(boardDeviceInfo->disks[driveId].inZipName, fileInZipFile ? fileInZipFile : "");
-    }
+    strcpy(boardDeviceInfo.disks[driveId].name, fileName ? fileName : "");
+    strcpy(boardDeviceInfo.disks[driveId].inZipName, fileInZipFile ? fileInZipFile : "");
 
     diskChange(driveId ,fileName, fileInZipFile);
 }
@@ -1220,12 +1223,10 @@ void boardChangeCassette(int tapeId, char* name, const char* fileInZipFile)
         fileInZipFile = NULL;
     }
 
-    if (boardDeviceInfo != NULL) {
-        boardDeviceInfo->tapes[tapeId].inserted = name != NULL;
+    boardDeviceInfo.tapes[tapeId].inserted = name != NULL;
 
-        strcpy(boardDeviceInfo->tapes[tapeId].name, name ? name : "");
-        strcpy(boardDeviceInfo->tapes[tapeId].inZipName, fileInZipFile ? fileInZipFile : "");
-    }
+    strcpy(boardDeviceInfo.tapes[tapeId].name, name ? name : "");
+    strcpy(boardDeviceInfo.tapes[tapeId].inZipName, fileInZipFile ? fileInZipFile : "");
 
     tapeInsert(name, fileInZipFile);
 }

@@ -282,7 +282,8 @@ static void loadState()
     ay8910LoadState(ay8910);
 }
 
-int sviCreate(Machine* machine, 
+int sviCreate(Emulator *emulator,
+              Machine* machine,
               VdpSyncMode vdpSyncMode,
               BoardInfo* boardInfo)
 {
@@ -333,7 +334,7 @@ int sviCreate(Machine* machine,
     svi80ColEnabled = 0;
 
     /* Initialize VDP */
-    vdpCreate(VDP_SVI, machine->video.vdpVersion, vdpSyncMode, machine->video.vramSize / 0x4000);
+    vdpCreate(emulator, VDP_SVI, machine->video.vdpVersion, vdpSyncMode, machine->video.vramSize / 0x4000);
 
     /* Initialize memory */
     for (i = 0; i < 4; i++) {

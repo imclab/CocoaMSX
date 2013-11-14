@@ -32,9 +32,10 @@
 @interface CMCocoaTimerArg : NSObject
 {
     @public
-    int (*timerCb)(void*);
+    int (*timerCb)(Emulator *);
     UInt32 timerFreq;
     UInt32 lastTimeout;
+    Emulator *emulator;
 }
 @end
 
@@ -47,7 +48,7 @@
 
 static struct timeval start = { -1, -1 };
 
-+ (void)callbackCalledByTimer:(NSTimer*)timer
++ (void)callbackCalledByTimer:(NSTimer *)timer
 {
     CMCocoaTimerArg *arg = (CMCocoaTimerArg*)timer.userInfo;
     
@@ -58,21 +59,24 @@ static struct timeval start = { -1, -1 };
         if (arg->lastTimeout != currentTime)
         {
             arg->lastTimeout = currentTime;
-            arg->timerCb(arg->timerCb);
+            arg->timerCb(arg->emulator);
         }
     }
 }
 
-void* archCreateTimer(int period, int (*timerCallback)(void*))
+void* archCreateTimer(Emulator *emulator, int (*timerCallback)(Emulator *))
 {
     NSTimer *timer = nil;
     CMCocoaTimerArg *arg = [[CMCocoaTimerArg alloc] init];
     
     if (arg)
     {
+        int period = emulatorGetSyncPeriod(emulator);
+        
         arg->timerFreq = 1000 / period;
         arg->lastTimeout = archGetSystemUpTime(arg->timerFreq);
         arg->timerCb = timerCallback;
+        arg->emulator = emulator;
         
         timer = [[NSTimer timerWithTimeInterval:period / 1000.0
                                          target:[CMCocoaTimer class]

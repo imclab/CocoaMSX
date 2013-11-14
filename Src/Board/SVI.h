@@ -30,7 +30,8 @@
  
 #include "Board.h"
 
-int sviCreate(Machine* machine, 
+int sviCreate(Emulator *emulator,
+              Machine* machine,
               VdpSyncMode vdpSyncMode,
               BoardInfo* boardInfo);
 

@@ -32,7 +32,8 @@
 #include "Board.h"
 #include <stdio.h>
 
-int sg1000Create(Machine* machine, 
+int sg1000Create(Emulator *emulator,
+                 Machine* machine,
                  VdpSyncMode vdpSyncMode,
                  BoardInfo* boardInfo);
 

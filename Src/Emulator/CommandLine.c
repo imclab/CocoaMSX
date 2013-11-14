@@ -269,7 +269,7 @@ void emuCheckFullscreenArgument(Properties* properties, char* cmdLine){
     }
 }
 
-static int emuStartWithArguments(Properties* properties, char* commandLine, char *gamedir) {
+static int emuStartWithArguments(Emulator *emulator, char* commandLine, char *gamedir) {
     int i;
     char    cmdLine[512] = "";
     char*   argument;
@@ -294,6 +294,7 @@ static int emuStartWithArguments(Properties* properties, char* commandLine, char
 #else
     int     startEmu = 0;
 #endif
+    Properties *properties = emulatorGetProperties(emulator);
 
     if (commandLine[0] != '/' && commandLine[1] == ':') {
         char* ptr;
@@ -333,7 +334,7 @@ static int emuStartWithArguments(Properties* properties, char* commandLine, char
                     updateExtendedDiskName(i, properties->media.disks[i].fileName, properties->media.disks[i].fileNameInZip);
                 }
 
-                return tryLaunchUnknownFile(properties, argument, 1);
+                return tryLaunchUnknownFile(emulator, argument, 1);
             }
             return 0;
         }
@@ -501,30 +502,32 @@ static int emuStartWithArguments(Properties* properties, char* commandLine, char
 
     if (properties->cassette.rewindAfterInsert) tapeRewindNextInsert();
 
-    if (strlen(rom1)  && !insertCartridge(properties, 0, rom1, *rom1zip ? rom1zip : NULL, romType1, -1)) return 0;
-    if (strlen(rom2)  && !insertCartridge(properties, 1, rom2, *rom2zip ? rom2zip : NULL, romType2, -1)) return 0;
-    if (strlen(diskA) && !insertDiskette(properties, 0, diskA, *diskAzip ? diskAzip : NULL, -1)) return 0;
-    if (strlen(diskB) && !insertDiskette(properties, 1, diskB, *diskBzip ? diskBzip : NULL, -1)) return 0;
-    if (strlen(ide1p) && !insertDiskette(properties, diskGetHdDriveId(0, 0), ide1p, NULL, -1)) return 0;
-    if (strlen(ide1s) && !insertDiskette(properties, diskGetHdDriveId(0, 1), ide1s, NULL, -1)) return 0;
-    if (strlen(cas)   && !insertCassette(properties, 0, cas, *caszip ? caszip : NULL, -1)) return 0;
+    if (strlen(rom1)  && !insertCartridge(emulator, 0, rom1, *rom1zip ? rom1zip : NULL, romType1, -1)) return 0;
+    if (strlen(rom2)  && !insertCartridge(emulator, 1, rom2, *rom2zip ? rom2zip : NULL, romType2, -1)) return 0;
+    if (strlen(diskA) && !insertDiskette(emulator, 0, diskA, *diskAzip ? diskAzip : NULL, -1)) return 0;
+    if (strlen(diskB) && !insertDiskette(emulator, 1, diskB, *diskBzip ? diskBzip : NULL, -1)) return 0;
+    if (strlen(ide1p) && !insertDiskette(emulator, diskGetHdDriveId(0, 0), ide1p, NULL, -1)) return 0;
+    if (strlen(ide1s) && !insertDiskette(emulator, diskGetHdDriveId(0, 1), ide1s, NULL, -1)) return 0;
+    if (strlen(cas)   && !insertCassette(emulator, 0, cas, *caszip ? caszip : NULL, -1)) return 0;
 
     if (strlen(machineName)) strcpy(properties->emulation.machineName, machineName);
 #ifdef WII
     else strcpy(properties->emulation.machineName, "MSX2 - No Moonsound"); /* If not specified, use MSX2 without moonsound as default */
 #endif
 
-    emulatorStop();
-    emulatorStart(NULL);
+    emulatorStop(emulator);
+    emulatorStart(emulator, NULL);
 
     return 1;
 }
 
-int emuTryStartWithArguments(Properties* properties, char* cmdLine, char *gamedir) {
+int emuTryStartWithArguments(Emulator *emulator, char* cmdLine, char *gamedir) {
+    Properties *properties = emulatorGetProperties(emulator);
+    
     if (cmdLine == NULL || *cmdLine == 0) {
         if (appConfigGetInt("autostart", 0) != 0) {
-            emulatorStop();
-            emulatorStart(properties->filehistory.quicksave);
+            emulatorStop(emulator);
+            emulatorStart(emulator, properties->filehistory.quicksave);
         }
         return 0;
     }
@@ -540,10 +543,10 @@ int emuTryStartWithArguments(Properties* properties, char* cmdLine, char *gamedi
                 *ptr = 0;
             }
             strcat(args, "\"");
-            success = emuStartWithArguments(properties, args, gamedir);
+            success = emuStartWithArguments(emulator, args, gamedir);
         }
         else {
-            success = emuStartWithArguments(properties, cmdLine, gamedir);
+            success = emuStartWithArguments(emulator, cmdLine, gamedir);
         }
         if (!success) {
             return -1;

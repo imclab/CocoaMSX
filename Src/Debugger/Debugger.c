@@ -329,28 +329,36 @@ const DbgIoPorts* dbgDeviceGetIoPorts(DbgDevice* dbgDevice, int index)
 
 void dbgRun()
 {
+    /* AK
     if (emulatorGetState() != EMU_RUNNING) {
         actionEmuTogglePause();
     }
+     */
 }
 
 void dbgStop()
 {
+    /* AK
     emulatorStop();
+     */
 }
 
 void dbgPause()
 {
+    /* AK
     if (emulatorGetState() == EMU_RUNNING) {
         actionEmuTogglePause();
     }
+     */
 }
 
 void dbgStep()
 {
+    /* AK
     if (emulatorGetState() == EMU_PAUSED) {
         actionEmuStep();
     }
+     */
 }
 
 void dbgSetBreakpoint(UInt16 address)

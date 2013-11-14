@@ -30,9 +30,10 @@
  
 #include "Board.h"
 
-int adamCreate(Machine* machine, 
-                 VdpSyncMode vdpSyncMode,
-                 BoardInfo* boardInfo);
+int adamCreate(Emulator *emulator,
+               Machine* machine,
+               VdpSyncMode vdpSyncMode,
+               BoardInfo* boardInfo);
 
 #endif /* ADAM_H */
 

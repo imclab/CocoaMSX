@@ -73,6 +73,7 @@ char statePrefix[64]         = "";
 
 void actionCartInsert(int cartNo)
 {
+    /* AK
     RomType romType;
     char* filename;
 
@@ -85,10 +86,12 @@ void actionCartInsert(int cartNo)
         emulatorResume();
     }
     archUpdateMenu(0);
+     */
 }
 
 void actionDiskInsert(int diskNo)
 {
+    /* AK
     char* filename;
 
     emulatorSuspend();
@@ -98,10 +101,12 @@ void actionDiskInsert(int diskNo)
     }
     emulatorResume();
     archUpdateMenu(0);
+     */
 }
 
 void actionDiskInsertNew(int diskNo)
 {
+    /* AK
     char* filename;
 
     emulatorSuspend();
@@ -111,10 +116,12 @@ void actionDiskInsertNew(int diskNo)
     }
     emulatorResume();
     archUpdateMenu(0);
+     */
 }
 
 void actionDiskInsertDir(int diskNo)
 {
+    /* AK
     char* filename;
 
     emulatorSuspend();
@@ -125,9 +132,11 @@ void actionDiskInsertDir(int diskNo)
     }
     emulatorResume();
     archUpdateMenu(0);
+     */
 }
 
 void actionDiskRemove(int i) {
+    /* AK
     state.properties->media.disks[i].fileName[0] = 0;
     state.properties->media.disks[i].fileNameInZip[0] = 0;
     updateExtendedDiskName(i, state.properties->media.disks[i].fileName, state.properties->media.disks[i].fileNameInZip);
@@ -137,10 +146,12 @@ void actionDiskRemove(int i) {
         emulatorResume();
     }
     archUpdateMenu(0);
+     */
 }
 
 void actionHarddiskInsert(int diskNo)
 {
+    /* AK
     char* filename;
 
     emulatorSuspend();
@@ -150,18 +161,22 @@ void actionHarddiskInsert(int diskNo)
     }
     emulatorResume();
     archUpdateMenu(0);
+     */
 }
 
 void actionHarddiskInsertCdrom(int diskNo)
 {
+    /* AK
     emulatorSuspend();
     insertDiskette(state.properties, diskNo, DISK_CDROM, NULL, 0);
     emulatorResume();
     archUpdateMenu(0);
+     */
 }
 
 void actionHarddiskInsertNew(int diskNo)
 {
+    /* AK
     char* filename;
 
     emulatorSuspend();
@@ -171,6 +186,7 @@ void actionHarddiskInsertNew(int diskNo)
     }
     emulatorResume();
     archUpdateMenu(0);
+     */
 }
 
 void actionHarddiskInsertDir(int diskNo)
@@ -179,6 +195,7 @@ void actionHarddiskInsertDir(int diskNo)
 
 void actionHarddiskRemove(int diskNo)
 {
+    /* AK
     state.properties->media.disks[diskNo].fileName[0] = 0;
     state.properties->media.disks[diskNo].fileNameInZip[0] = 0;
     updateExtendedDiskName(diskNo, state.properties->media.disks[diskNo].fileName, state.properties->media.disks[diskNo].fileNameInZip);
@@ -188,10 +205,12 @@ void actionHarddiskRemove(int diskNo)
         emulatorResume();
     }
     archUpdateMenu(0);
+     */
 }
 
 void actionHarddiskRemoveAll()
 {
+    /* AK
     int i, j;
     int diskNo;
     int flag;
@@ -214,6 +233,7 @@ void actionHarddiskRemoveAll()
     }
     if (flag) emulatorResume();
     archUpdateMenu(0);
+     */
 }
 
 void actionSetAudioCaptureSetDirectory(char* dir, char* prefix)
@@ -323,8 +343,9 @@ void actionToggleWaveCapture() {
 }
 
 void actionVideoCaptureLoad() {
+    /* AK
     char* filename;
-
+     
     emulatorSuspend();
     filename = archFilenameGetOpenCapture(state.properties);
     if (filename != NULL) {
@@ -336,9 +357,11 @@ void actionVideoCaptureLoad() {
         emulatorResume();
     }
     archUpdateMenu(0);
+     */
 }
 
 void actionVideoCapturePlay() {
+    /* AK
     if (emulatorGetState() != EMU_STOPPED) {
         emulatorStop();
     }
@@ -347,6 +370,7 @@ void actionVideoCapturePlay() {
         emulatorStart(state.properties->filehistory.videocap);
     }
     archUpdateMenu(0);
+     */
 }
 
 void actionVideoCaptureSave() {
@@ -356,6 +380,7 @@ void actionVideoCaptureSave() {
 }
 
 void actionVideoCaptureStop() {
+    /* AK
     if (emulatorGetState() == EMU_STOPPED) {
         return;
     }
@@ -366,9 +391,11 @@ void actionVideoCaptureStop() {
 
     emulatorResume();
     archUpdateMenu(0);
+     */
 }
 
 void actionVideoCaptureRec() {
+    /* AK
     if (emulatorGetState() == EMU_STOPPED) {
         strcpy(state.properties->filehistory.videocap, generateSaveFilename(state.properties, videoDir, videoPrefix, ".cap", 2));
         boardCaptureStart(state.properties->filehistory.videocap);
@@ -384,9 +411,11 @@ void actionVideoCaptureRec() {
 
     emulatorResume();
     archUpdateMenu(0);
+     */
 }
 
 void actionLoadState() {
+    /* AK
     char* filename;
 
     emulatorSuspend();
@@ -399,9 +428,11 @@ void actionLoadState() {
         emulatorResume();
     }
     archUpdateMenu(0);
+     */
 }
 
 void actionSaveState() {
+    /* AK
     char* filename;
 
     if (emulatorGetState() != EMU_STOPPED) {
@@ -421,23 +452,28 @@ void actionSaveState() {
         }
         emulatorResume();
     }
+     */
 }
 
 void actionQuickLoadState() {
+    /* AK
     if (fileExist(state.properties->filehistory.quicksave, NULL)) {
         emulatorStop();
         emulatorStart(state.properties->filehistory.quicksave);
     }
     archUpdateMenu(0);
+     */
 }
 
 void actionQuickSaveState() {
+    /* AK
     if (emulatorGetState() != EMU_STOPPED) {
         emulatorSuspend();
         strcpy(state.properties->filehistory.quicksave, generateSaveFilename(state.properties, stateDir, statePrefix, ".sta", 2));
         boardSaveState(state.properties->filehistory.quicksave, 1);
         emulatorResume();
     }
+     */
 }
 
 void actionCartInsert1() {
@@ -454,12 +490,15 @@ void actionToggleMouseCapture() {
 }
 
 void actionEmuStep() {
+    /* AK
     if (emulatorGetState() == EMU_PAUSED) {
         emulatorSetState(EMU_STEP);
     }
+     */
 }
 
 void actionEmuTogglePause() {
+    /* AK
     if (emulatorGetState() == EMU_STOPPED) {
         emulatorStart(NULL);
     }
@@ -472,13 +511,16 @@ void actionEmuTogglePause() {
         debuggerNotifyEmulatorPause();
     }
     archUpdateMenu(0);
+     */
 }
 
 void actionEmuStop() {
+    /* AK
     if (emulatorGetState() != EMU_STOPPED) {
         emulatorStop();
     }
     archUpdateMenu(0);
+     */
 }
 
 void actionDiskDirInsertA() {
@@ -498,21 +540,29 @@ void actionDiskInsertB() {
 }
 
 void actionMaxSpeedSet() {
+    /* AK
     emulatorSetMaxSpeed(1);
+     */
 }
 
 void actionMaxSpeedRelease() {
+    /* AK
     emulatorSetMaxSpeed(0);
+     */
 }
 
 void actionStartPlayReverse()
 {
+    /* AK
     emulatorPlayReverse(1);
+     */
 }
 
 void actionStopPlayReverse()
 {
+    /* AK
     emulatorPlayReverse(0);
+     */
 }
 
 void actionDiskQuickChange() {
@@ -571,7 +621,9 @@ void actionWindowSizeMinimized() {
 }
 
 void actionMaxSpeedToggle() {
+    /* AK
     emulatorSetMaxSpeed(emulatorGetMaxSpeed() ? 0 : 1);
+     */
 }
 
 void actionFullscreenToggle() {
@@ -590,25 +642,32 @@ void actionFullscreenToggle() {
 }
 
 void actionEmuSpeedNormal() {
+    /* AK
     state.properties->emulation.speed = 50;
     emulatorSetFrequency(state.properties->emulation.speed, NULL);
+     */
 }
 
 void actionEmuSpeedDecrease() {
+    /* AK
     if (state.properties->emulation.speed > 0) {
         state.properties->emulation.speed--;
         emulatorSetFrequency(state.properties->emulation.speed, NULL);
     }
+     */
 }
 
 void actionEmuSpeedIncrease() {
+    /* AK
     if (state.properties->emulation.speed < 100) {
         state.properties->emulation.speed++;
         emulatorSetFrequency(state.properties->emulation.speed, NULL);
     }
+     */
 }
 
 void actionCasInsert() {
+    /* AK
     char* filename;
 
     emulatorSuspend();
@@ -619,9 +678,11 @@ void actionCasInsert() {
     }
     emulatorResume();
     archUpdateMenu(0);
+     */
 }
 
 void actionCasRewind() {
+    /* AK
     if (emulatorGetState() != EMU_STOPPED) {
             emulatorSuspend();
         }
@@ -639,6 +700,7 @@ void actionCasRewind() {
         tapeSetReadOnly(state.properties->cassette.readOnly);
     }
     archUpdateMenu(0);
+     */
 }
 
 void actionCasSetPosition() {
@@ -646,6 +708,7 @@ void actionCasSetPosition() {
 }
 
 void actionEmuResetSoft() {
+    /* AK
     archUpdateMenu(0);
     if (emulatorGetState() == EMU_RUNNING) {
         emulatorSuspend();
@@ -657,16 +720,20 @@ void actionEmuResetSoft() {
         emulatorStart(NULL);
     }
     archUpdateMenu(0);
+     */
 }
 
 void actionEmuResetHard() {
+    /* AK
     archUpdateMenu(0);
     emulatorStop();
     emulatorStart(NULL);
     archUpdateMenu(0);
+     */
 }
 
 void actionEmuResetClean() {
+    /* AK
     int i;
 
     emulatorStop();
@@ -692,6 +759,7 @@ void actionEmuResetClean() {
 
     emulatorStart(NULL);
     archUpdateMenu(0);
+     */
 }
 
 void actionScreenCapture() {
@@ -707,6 +775,7 @@ void actionScreenCaptureUnfilteredLarge() {
 }
 
 void actionTapeRemove(int i) {
+    /* AK
     state.properties->media.tapes[i].fileName[0] = 0;
     state.properties->media.tapes[i].fileNameInZip[0] = 0;
     if (emulatorGetState() != EMU_STOPPED) {
@@ -716,9 +785,11 @@ void actionTapeRemove(int i) {
     }
     updateExtendedCasName(0, state.properties->media.tapes[0].fileName, state.properties->media.tapes[0].fileNameInZip);
     archUpdateMenu(0);
+     */
 }
 
 void actionCartRemove(int i) {
+    /* AK
     state.properties->media.carts[i].fileName[0] = 0;
     state.properties->media.carts[i].fileNameInZip[0] = 0;
     state.properties->media.carts[i].type = ROM_UNKNOWN;
@@ -738,6 +809,7 @@ void actionCartRemove(int i) {
         boardChangeCartridge(i, ROM_UNKNOWN, NULL, NULL);
     }
     archUpdateMenu(0);
+     */
 }
 
 void actionCasRemove() {
@@ -781,6 +853,7 @@ void actionToggleCasAutoRewind() {
 }
 
 void actionCasSave() {
+    /*
     char* filename;
 
     if (*state.properties->media.tapes[0].fileName) {
@@ -814,6 +887,7 @@ void actionCasSave() {
         }
     }
     archUpdateMenu(0);
+     */
 }
 
 void actionPropShowEmulation() {
@@ -989,15 +1063,19 @@ void actionMuteToggleMidi() {
 
 void actionPrinterForceFormFeed()
 {
+    /* AK
     emulatorSuspend();
     archForceFormFeed();
     emulatorResume();
+     */
 }
 
 void actionVolumeToggleStereo() {
+    /* AK
     state.properties->sound.stereo = !state.properties->sound.stereo;
 
     emulatorRestartSound();
+     */
 }
 
 void actionNextTheme() {
@@ -1142,8 +1220,10 @@ void actionVideoSetFilter(int value) {
 }
 
 void actionEmuSpeedSet(int value) {
+    /* AK
     state.properties->emulation.speed = value;
     emulatorSetFrequency(state.properties->emulation.speed, NULL);
+     */
 }
 
 void actionVolumeSetMaster(int value) {
@@ -1340,11 +1420,13 @@ void actionSetVolumeMute(int value) {
 }
 
 void actionSetVolumeStereo(int value) {
+    /* AK
     int oldStereo = state.properties->sound.stereo;
     state.properties->sound.stereo = value ? 1 : 0;
     if (oldStereo != state.properties->sound.stereo) {
         emulatorRestartSound();
     }
+     */
 }
 
 void actionKeyPress(int keyCode, int pressed)

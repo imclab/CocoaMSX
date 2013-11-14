@@ -32,10 +32,4 @@ typedef void (* CMThreadEntryPoint)();
     pthread_attr_t  attr;
     pthread_t       posixThreadID;
 }
-
-- (id)initWithEntryPoint:(CMThreadEntryPoint)entryPoint;
-- (void)start;
-- (void)join;
-+ (void)sleepMilliseconds:(NSInteger)ms;
-
 @end

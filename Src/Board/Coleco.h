@@ -30,7 +30,8 @@
  
 #include "Board.h"
 
-int colecoCreate(Machine* machine, 
+int colecoCreate(Emulator *emulator,
+                 Machine* machine,
                  VdpSyncMode vdpSyncMode,
                  BoardInfo* boardInfo);
 

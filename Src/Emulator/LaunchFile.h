@@ -29,12 +29,12 @@
 #define LAUNCH_FILE_H
 
 #include "MediaDb.h"
-#include "Properties.h"
+#include "Emulator.h"
 
-int tryLaunchUnknownFile(Properties* properties, const char* fileName, int forceAutostart);
-int insertCartridge(Properties* properties, int drive, const char* fname, const char* inZipFile, RomType romType, int forceAutostart);
-int insertDiskette(Properties* properties, int drive, const char* fname, const char* inZipFile, int forceAutostart);
-int insertCassette(Properties* properties, int drive, const char* fname, const char* inZipFile, int forceAutostart);
+int tryLaunchUnknownFile(Emulator *emulator, const char* fileName, int forceAutostart);
+int insertCartridge(Emulator *emulator, int drive, const char* fname, const char* inZipFile, RomType romType, int forceAutostart);
+int insertDiskette(Emulator *emulator, int drive, const char* fname, const char* inZipFile, int forceAutostart);
+int insertCassette(Emulator *emulator, int drive, const char* fname, const char* inZipFile, int forceAutostart);
 
 #endif
 

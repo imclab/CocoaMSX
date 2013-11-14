@@ -46,51 +46,58 @@
 #include "ArchDialog.h"
 #include "ArchNotifications.h"
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
-static int WaitForSync(int maxSpeed, int breakpointHit);
+//#define ENABLE_LOG
 
-static void*  emuThread;
+static int WaitForSync(Emulator *emulator, int maxSpeed, int breakpointHit);
+
+struct Emulator {
+    void*  emuThread;
 #ifndef WII
-static void*  emuSyncEvent;
+    void*  emuSyncEvent;
 #endif
-static void*  emuStartEvent;
+    void*  emuStartEvent;
 #ifndef WII
-static void*  emuTimer;
+    void*  emuTimer;
 #endif
-static int    emuExitFlag;
-static UInt32 emuSysTime = 0;
-static UInt32 emuFrequency = 3579545;
-int           emuMaxSpeed = 0;
-int           emuPlayReverse = 0;
-int           emuMaxEmuSpeed = 0; // Max speed issued by emulation
-static char   emuStateName[512];
-static volatile int      emuSuspendFlag;
-static volatile EmuState emuState = EMU_STOPPED;
-static volatile int      emuSingleStep = 0;
-static Properties* properties;
-static Mixer* mixer;
-static BoardDeviceInfo deviceInfo;
-static Machine* machine;
-static int lastScreenMode;
+    int    emuExitFlag;
+    UInt32 emuSysTime;
+    UInt32 emuFrequency;
+    int    emuMaxSpeed;
+    int    emuPlayReverse;
+    int    emuMaxEmuSpeed; // Max speed issued by emulation
+    char   emuStateName[512];
+    volatile int      emuSuspendFlag;
+    volatile EmuState emuState;
+    volatile int      emuSingleStep;
+    Properties* properties;
+    Mixer* mixer;
+    BoardDeviceInfo deviceInfo;
+    Machine* machine;
+    int lastScreenMode;
+    
+    int emuFrameskipCounter;
+    
+    UInt32 emuTimeIdle;
+    UInt32 emuTimeTotal;
+    UInt32 emuTimeOverflow;
+    UInt32 emuUsageCurrent;
+    UInt32 emuCpuSpeed;
+    UInt32 emuCpuUsage;
+    int    enableSynchronousUpdate;
+    
+#ifdef ENABLE_LOG
+    UInt32 logentry[LOG_SIZE];
+    int    logindex;
+    int    logwrapped;
+#endif
+};
 
-static int emuFrameskipCounter = 0;
-
-static UInt32 emuTimeIdle       = 0;
-static UInt32 emuTimeTotal      = 1;
-static UInt32 emuTimeOverflow   = 0;
-static UInt32 emuUsageCurrent   = 0;
-static UInt32 emuCpuSpeed       = 0;
-static UInt32 emuCpuUsage       = 0;
-static int    enableSynchronousUpdate = 1;
-
-#if 0
+#ifdef ENABLE_LOG
 
 #define LOG_SIZE (10 * 1000000)
-UInt32 logentry[LOG_SIZE];
-
-int logindex;
-int logwrapped;
 
 void dolog(int slot, int sslot, int wr, UInt16 addr, UInt8 val)
 {
@@ -150,22 +157,49 @@ void savelog()
 #define savelog()
 #endif
 
-static void emuCalcCpuUsage() {
+Emulator * emulatorCreate(Properties *properties, Mixer *mixer) {
+    Emulator *emulator = (Emulator *)malloc(sizeof(Emulator));
+    
+    emulator->emuSysTime = 0;
+    emulator->emuFrequency = 3579545;
+    emulator->emuMaxSpeed = 0;
+    emulator->emuPlayReverse = 0;
+    emulator->emuMaxEmuSpeed = 0;
+    emulator->emuState = EMU_STOPPED;
+    emulator->emuSingleStep = 0;
+    
+    emulator->emuFrameskipCounter = 0;
+    
+    emulator->emuTimeIdle = 0;
+    emulator->emuTimeTotal = 1;
+    emulator->emuTimeOverflow = 0;
+    emulator->emuUsageCurrent = 0;
+    emulator->emuCpuSpeed = 0;
+    emulator->emuCpuUsage = 0;
+    emulator->enableSynchronousUpdate = 1;
+    
+    emulator->properties = properties;
+    emulator->mixer = mixer;
+    
+    return emulator;
+}
+
+static void emuCalcCpuUsage(Emulator *emulator) {
     static UInt32 oldSysTime = 0;
     static UInt32 cnt = 0;
     UInt32 newSysTime;
     UInt32 emuTimeAverage;
 
-    if (emuTimeTotal < 10) {
+    if (emulator->emuTimeTotal < 10) {
         return;
     }
     newSysTime = archGetSystemUpTime(1000);
-    emuTimeAverage = 100 * (emuTimeTotal - emuTimeIdle) / (emuTimeTotal / 10);
+    emuTimeAverage = 100 * (emulator->emuTimeTotal - emulator->emuTimeIdle) / (emulator->emuTimeTotal / 10);
 
-    emuTimeOverflow = emuTimeAverage > 940;
+    emulator->emuTimeOverflow = emuTimeAverage > 940;
 
     if ((cnt++ & 0x1f) == 0) {
-        UInt32 usageAverage = emuUsageCurrent * 100 / (newSysTime - oldSysTime) * emuFrequency / 3579545;
+        UInt32 usageAverage = emulator->emuUsageCurrent * 100 / (newSysTime - oldSysTime) * emulator->emuFrequency / 3579545;
         if (usageAverage > 98 && usageAverage < 102) {
             usageAverage = 100;
         }
@@ -174,63 +208,75 @@ static void emuCalcCpuUsage() {
             usageAverage = 0;
         }
 
-        emuCpuSpeed = usageAverage;
-        emuCpuUsage = emuTimeAverage;
+        emulator->emuCpuSpeed = usageAverage;
+        emulator->emuCpuUsage = emuTimeAverage;
     }
 
     oldSysTime      = newSysTime;
-    emuUsageCurrent = 0;
-    emuTimeIdle     = 0;
-    emuTimeTotal    = 1;
+    emulator->emuUsageCurrent = 0;
+    emulator->emuTimeIdle     = 0;
+    emulator->emuTimeTotal    = 1;
 }
 
-static int emuUseSynchronousUpdate()
+static int emulatorUseSynchronousUpdate(Emulator *emulator)
 {
-    if (properties->emulation.syncMethod == P_EMU_SYNCIGNORE) {
-        return properties->emulation.syncMethod;
+    if (emulator->properties->emulation.syncMethod == P_EMU_SYNCIGNORE) {
+        return emulator->properties->emulation.syncMethod;
     }
 
-    if (properties->emulation.speed == 50 &&
-        enableSynchronousUpdate &&
-        emulatorGetMaxSpeed() == 0)
+    if (emulator->properties->emulation.speed == 50 &&
+        emulator->enableSynchronousUpdate &&
+        emulatorGetMaxSpeed(emulator) == 0)
     {
-        return properties->emulation.syncMethod;
+        return emulator->properties->emulation.syncMethod;
     }
     return P_EMU_SYNCAUTO;
 }
 
 
-UInt32 emulatorGetCpuSpeed() {
-    return emuCpuSpeed;
+UInt32 emulatorGetCpuSpeed(const Emulator *emulator) {
+    return emulator->emuCpuSpeed;
 }
 
-UInt32 emulatorGetCpuUsage() {
-    return emuCpuUsage;
+UInt32 emulatorGetCpuUsage(const Emulator *emulator) {
+    return emulator->emuCpuUsage;
 }
 
-void emuEnableSynchronousUpdate(int enable)
+void emulatorEnableSynchronousUpdate(Emulator *emulator, int enable)
 {
-    enableSynchronousUpdate = enable;
+    emulator->enableSynchronousUpdate = enable;
 }
 
-void emulatorInit(Properties* theProperties, Mixer* theMixer)
+Properties * emulatorGetProperties(const Emulator *emulator)
 {
-    properties = theProperties;
-    mixer      = theMixer;
+    return emulator->properties;
 }
 
-void emulatorExit()
+Mixer * emulatorGetMixer(const Emulator *emulator)
 {
-    properties = NULL;
-    mixer      = NULL;
+    return emulator->mixer;
 }
 
-
-EmuState emulatorGetState() {
-    return emuState;
+void emulatorSetProperties(Emulator *emulator, Properties* properties)
+{
+    emulator->properties = properties;
 }
 
-void emulatorSetState(EmuState state) {
+void emulatorSetMixer(Emulator *emulator, Mixer *mixer)
+{
+    emulator->mixer = mixer;
+}
+
+void emulatorDestroy(Emulator *emulator)
+{
+    free(emulator);
+}
+
+EmuState emulatorGetState(const Emulator *emulator) {
+    return emulator->emuState;
+}
+
+void emulatorSetState(Emulator *emulator, EmuState state) {
     if (state == EMU_RUNNING) {
         archSoundResume();
         archMidiEnable(1);
@@ -241,27 +287,28 @@ void emulatorSetState(EmuState state) {
     }
     if (state == EMU_STEP) {
         state = EMU_RUNNING;
-        emuSingleStep = 1;
+        emulator->emuSingleStep = 1;
     }
-    emuState = state;
+    emulator->emuState = state;
 }
 
 
-int emulatorGetSyncPeriod() {
+int emulatorGetSyncPeriod(const Emulator *emulator) {
 #ifdef NO_HIRES_TIMERS
     return 10;
 #else
-    return properties->emulation.syncMethod == P_EMU_SYNCAUTO ||
-           properties->emulation.syncMethod == P_EMU_SYNCNONE ? 2 : 1;
+    return emulator->properties->emulation.syncMethod == P_EMU_SYNCAUTO ||
+           emulator->properties->emulation.syncMethod == P_EMU_SYNCNONE ? 2 : 1;
 #endif
 }
 
 #ifndef WII
-static int timerCallback(void* timer) {
-    if (properties == NULL) {
+static int timerCallback(Emulator *emulator) {
+    if (emulator == NULL || emulator->properties == NULL) {
         return 1;
     }
     else {
+        Properties *properties = emulator->properties;
         static UInt32 frameCount = 0;
         static UInt32 oldSysTime = 0;
         static UInt32 refreshRate = 50;
@@ -269,7 +316,7 @@ static int timerCallback(void* timer) {
 //        UInt32 syncPeriod = emulatorGetSyncPeriod();
         UInt32 sysTime = archGetSystemUpTime(1000);
         UInt32 diffTime = sysTime - oldSysTime;
-        int syncMethod = emuUseSynchronousUpdate();
+        int syncMethod = emulatorUseSynchronousUpdate(emulator);
 
         if (diffTime == 0) {
             return 0;
@@ -281,7 +328,7 @@ static int timerCallback(void* timer) {
         frameCount += refreshRate * diffTime;
         if (frameCount >= framePeriod) {
             frameCount %= framePeriod;
-            if (emuState == EMU_RUNNING) {
+            if (emulator->emuState == EMU_RUNNING) {
                 refreshRate = boardGetRefreshRate();
 
                 if (syncMethod == P_EMU_SYNCAUTO || syncMethod == P_EMU_SYNCNONE) {
@@ -295,82 +342,86 @@ static int timerCallback(void* timer) {
         }
 
         // Update emulation
-        archEventSet(emuSyncEvent);
+        archEventSet(emulator->emuSyncEvent);
     }
 
     return 1;
 }
 #endif
 
-static void getDeviceInfo(BoardDeviceInfo* deviceInfo)
+static void getDeviceInfo(Emulator *emulator)
 {
+    BoardDeviceInfo deviceInfo = emulator->deviceInfo;
     int i;
 
     for (i = 0; i < PROP_MAX_CARTS; i++) {
-        strcpy(properties->media.carts[i].fileName, deviceInfo->carts[i].name);
-        strcpy(properties->media.carts[i].fileNameInZip, deviceInfo->carts[i].inZipName);
+        strcpy(emulator->properties->media.carts[i].fileName, deviceInfo.carts[i].name);
+        strcpy(emulator->properties->media.carts[i].fileNameInZip, deviceInfo.carts[i].inZipName);
         // Don't save rom type
         // properties->media.carts[i].type = deviceInfo->carts[i].type;
-        updateExtendedRomName(i, properties->media.carts[i].fileName, properties->media.carts[i].fileNameInZip);
+        updateExtendedRomName(i, emulator->properties->media.carts[i].fileName,
+                              emulator->properties->media.carts[i].fileNameInZip);
     }
 
     for (i = 0; i < PROP_MAX_DISKS; i++) {
-        strcpy(properties->media.disks[i].fileName, deviceInfo->disks[i].name);
-        strcpy(properties->media.disks[i].fileNameInZip, deviceInfo->disks[i].inZipName);
-        updateExtendedDiskName(i, properties->media.disks[i].fileName, properties->media.disks[i].fileNameInZip);
+        strcpy(emulator->properties->media.disks[i].fileName, deviceInfo.disks[i].name);
+        strcpy(emulator->properties->media.disks[i].fileNameInZip, deviceInfo.disks[i].inZipName);
+        updateExtendedDiskName(i, emulator->properties->media.disks[i].fileName,
+                               emulator->properties->media.disks[i].fileNameInZip);
     }
 
     for (i = 0; i < PROP_MAX_TAPES; i++) {
-        strcpy(properties->media.tapes[i].fileName, deviceInfo->tapes[i].name);
-        strcpy(properties->media.tapes[i].fileNameInZip, deviceInfo->tapes[i].inZipName);
-        updateExtendedCasName(i, properties->media.tapes[i].fileName, properties->media.tapes[i].fileNameInZip);
+        strcpy(emulator->properties->media.tapes[i].fileName, deviceInfo.tapes[i].name);
+        strcpy(emulator->properties->media.tapes[i].fileNameInZip, deviceInfo.tapes[i].inZipName);
+        updateExtendedCasName(i, emulator->properties->media.tapes[i].fileName,
+                              emulator->properties->media.tapes[i].fileNameInZip);
     }
 
-    properties->emulation.vdpSyncMode      = deviceInfo->video.vdpSyncMode;
-
+    emulator->properties->emulation.vdpSyncMode = deviceInfo.video.vdpSyncMode;
 }
 
-static void setDeviceInfo(BoardDeviceInfo* deviceInfo)
+static void setDeviceInfo(Emulator *emulator, BoardDeviceInfo* deviceInfo)
 {
     int i;
 
     for (i = 0; i < PROP_MAX_CARTS; i++) {
-        deviceInfo->carts[i].inserted =  strlen(properties->media.carts[i].fileName);
-        deviceInfo->carts[i].type = properties->media.carts[i].type;
-        strcpy(deviceInfo->carts[i].name, properties->media.carts[i].fileName);
-        strcpy(deviceInfo->carts[i].inZipName, properties->media.carts[i].fileNameInZip);
+        deviceInfo->carts[i].inserted =  strlen(emulator->properties->media.carts[i].fileName);
+        deviceInfo->carts[i].type = emulator->properties->media.carts[i].type;
+        strcpy(deviceInfo->carts[i].name, emulator->properties->media.carts[i].fileName);
+        strcpy(deviceInfo->carts[i].inZipName, emulator->properties->media.carts[i].fileNameInZip);
     }
 
     for (i = 0; i < PROP_MAX_DISKS; i++) {
-        deviceInfo->disks[i].inserted =  strlen(properties->media.disks[i].fileName);
-        strcpy(deviceInfo->disks[i].name, properties->media.disks[i].fileName);
-        strcpy(deviceInfo->disks[i].inZipName, properties->media.disks[i].fileNameInZip);
+        deviceInfo->disks[i].inserted = strlen(emulator->properties->media.disks[i].fileName);
+        strcpy(deviceInfo->disks[i].name, emulator->properties->media.disks[i].fileName);
+        strcpy(deviceInfo->disks[i].inZipName, emulator->properties->media.disks[i].fileNameInZip);
     }
 
     for (i = 0; i < PROP_MAX_TAPES; i++) {
-        deviceInfo->tapes[i].inserted =  strlen(properties->media.tapes[i].fileName);
-        strcpy(deviceInfo->tapes[i].name, properties->media.tapes[i].fileName);
-        strcpy(deviceInfo->tapes[i].inZipName, properties->media.tapes[i].fileNameInZip);
+        deviceInfo->tapes[i].inserted =  strlen(emulator->properties->media.tapes[i].fileName);
+        strcpy(deviceInfo->tapes[i].name, emulator->properties->media.tapes[i].fileName);
+        strcpy(deviceInfo->tapes[i].inZipName, emulator->properties->media.tapes[i].fileNameInZip);
     }
 
-    deviceInfo->video.vdpSyncMode = properties->emulation.vdpSyncMode;
+    deviceInfo->video.vdpSyncMode = emulator->properties->emulation.vdpSyncMode;
 }
 
 static int emulationStartFailure = 0;
 
-static void emulatorPauseCb(void)
+static void emulatorPauseCb(Emulator *emulator)
 {
-    emulatorSetState(EMU_PAUSED);
+    emulatorSetState(emulator, EMU_PAUSED);
     debuggerNotifyEmulatorPause();
 }
 
-static void emulatorThread() {
+static void emulatorThread(Emulator *emulator) {
+    Properties *properties = emulator->properties;
     int frequency;
     int success = 0;
     int reversePeriod = 0;
     int reverseBufferCnt = 0;
 
-    emulatorSetFrequency(properties->emulation.speed, &frequency);
+    emulatorSetFrequency(emulator, properties->emulation.speed, &frequency);
 
     switchSetFront(properties->emulation.frontSwitch);
     switchSetPause(properties->emulation.pauseSwitch);
@@ -380,152 +431,154 @@ static void emulatorThread() {
         reversePeriod = 150;
         reverseBufferCnt = properties->emulation.reverseMaxTime * 1000 / reversePeriod;
     }
-    success = boardRun(machine,
-                       &deviceInfo,
-                       mixer,
-                       *emuStateName ? emuStateName : NULL,
+    success = boardRun(emulator,
+                       emulator->machine,
+                       emulator->deviceInfo,
+                       *emulator->emuStateName ? emulator->emuStateName : NULL,
                        frequency, 
                        reversePeriod,
                        reverseBufferCnt,
                        WaitForSync);
 
     ledSetAll(0);
-    emuState = EMU_STOPPED;
+    emulator->emuState = EMU_STOPPED;
 
 #ifndef WII
-    archTimerDestroy(emuTimer);
+    archTimerDestroy(emulator->emuTimer);
 #endif
 
     if (!success) {
         emulationStartFailure = 1;
     }
 
-    archEventSet(emuStartEvent);
+    archEventSet(emulator->emuStartEvent);
 }
+
 //extern int xxxx;
 
-void emulatorStart(const char* stateName) {
+void emulatorStart(Emulator *emulator, const char* stateName) {
         dbgEnable();
 
     archEmulationStartNotification();
 //xxxx = 0;
-    emulatorResume();
+    emulatorResume(emulator);
 
-    emuExitFlag = 0;
+    emulator->emuExitFlag = 0;
 
-    mixerIsChannelTypeActive(mixer, MIXER_CHANNEL_MOONSOUND, 1);
-    mixerIsChannelTypeActive(mixer, MIXER_CHANNEL_YAMAHA_SFG, 1);
-    mixerIsChannelTypeActive(mixer, MIXER_CHANNEL_MSXAUDIO, 1);
-    mixerIsChannelTypeActive(mixer, MIXER_CHANNEL_MSXMUSIC, 1);
-    mixerIsChannelTypeActive(mixer, MIXER_CHANNEL_SCC, 1);
+    mixerIsChannelTypeActive(emulator->mixer, MIXER_CHANNEL_MOONSOUND, 1);
+    mixerIsChannelTypeActive(emulator->mixer, MIXER_CHANNEL_YAMAHA_SFG, 1);
+    mixerIsChannelTypeActive(emulator->mixer, MIXER_CHANNEL_MSXAUDIO, 1);
+    mixerIsChannelTypeActive(emulator->mixer, MIXER_CHANNEL_MSXMUSIC, 1);
+    mixerIsChannelTypeActive(emulator->mixer, MIXER_CHANNEL_SCC, 1);
 
 
-    properties->emulation.pauseSwitch = 0;
-    switchSetPause(properties->emulation.pauseSwitch);
+    emulator->properties->emulation.pauseSwitch = 0;
+    switchSetPause(emulator->properties->emulation.pauseSwitch);
 
-    machine = machineCreate(properties->emulation.machineName);
+    emulator->machine = machineCreate(emulator->properties->emulation.machineName);
 
-    if (machine == NULL) {
+    if (emulator->machine == NULL) {
         archShowStartEmuFailDialog();
         archEmulationStopNotification();
-        emuState = EMU_STOPPED;
+        emulator->emuState = EMU_STOPPED;
         archEmulationStartFailure();
         return;
     }
 
-    boardSetMachine(machine);
+    boardSetMachine(emulator->machine);
 
 #ifndef NO_TIMERS
 #ifndef WII
-    emuSyncEvent  = archEventCreate(0);
+    emulator->emuSyncEvent  = archEventCreate(0);
 #endif
-    emuStartEvent = archEventCreate(0);
+    emulator->emuStartEvent = archEventCreate(0);
 #ifndef WII
-    emuTimer = archCreateTimer(emulatorGetSyncPeriod(), timerCallback);
+    emulator->emuTimer = archCreateTimer(emulator, timerCallback);
 #endif
 #endif
 
-    setDeviceInfo(&deviceInfo);
+    setDeviceInfo(emulator, &emulator->deviceInfo);
 
     inputEventReset();
 
     archSoundResume();
     archMidiEnable(1);
 
-    emuState = EMU_PAUSED;
+    emulator->emuState = EMU_PAUSED;
     emulationStartFailure = 0;
-    strcpy(emuStateName, stateName ? stateName : "");
+    strncpy(emulator->emuStateName, stateName ? stateName : "",
+            sizeof(emulator->emuStateName) - 1);
 
     clearlog();
 
 #ifdef SINGLE_THREADED
-    emuState = EMU_RUNNING;
-    emulatorThread();
+    emulator->emuState = EMU_RUNNING;
+    emulatorThread(emulator);
 
     if (emulationStartFailure) {
         archEmulationStopNotification();
-        emuState = EMU_STOPPED;
+        emulator->emuState = EMU_STOPPED;
         archEmulationStartFailure();
     }
 #else
-    emuThread = archThreadCreate(emulatorThread, THREAD_PRIO_HIGH);
+    emulator->emuThread = archThreadCreate(emulatorThread, emulator, THREAD_PRIO_HIGH);
 
-    archEventWait(emuStartEvent, 3000);
+    archEventWait(emulator->emuStartEvent, 3000);
 
     if (emulationStartFailure) {
         archEmulationStopNotification();
-        emuState = EMU_STOPPED;
+        emulator->emuState = EMU_STOPPED;
         archEmulationStartFailure();
     }
-    if (emuState != EMU_STOPPED) {
-        getDeviceInfo(&deviceInfo);
+    if (emulator->emuState != EMU_STOPPED) {
+        getDeviceInfo(emulator);
 
-        boardSetYm2413Oversampling(properties->sound.chip.ym2413Oversampling);
-        boardSetY8950Oversampling(properties->sound.chip.y8950Oversampling);
-        boardSetMoonsoundOversampling(properties->sound.chip.moonsoundOversampling);
+        boardSetYm2413Oversampling(emulator->properties->sound.chip.ym2413Oversampling);
+        boardSetY8950Oversampling(emulator->properties->sound.chip.y8950Oversampling);
+        boardSetMoonsoundOversampling(emulator->properties->sound.chip.moonsoundOversampling);
 
-        strcpy(properties->emulation.machineName, machine->name);
+        strcpy(emulator->properties->emulation.machineName, emulator->machine->name);
 
         debuggerNotifyEmulatorStart();
 
-        emuState = EMU_RUNNING;
+        emulator->emuState = EMU_RUNNING;
     }
 #endif
 }
 
-void emulatorStop() {
-    if (emuState == EMU_STOPPED) {
+void emulatorStop(Emulator *emulator) {
+    if (emulator->emuState == EMU_STOPPED) {
         return;
     }
 
     debuggerNotifyEmulatorStop();
 
-    emuState = EMU_STOPPED;
+    emulator->emuState = EMU_STOPPED;
 
     do {
         archThreadSleep(10);
-    } while (!emuSuspendFlag);
+    } while (!emulator->emuSuspendFlag);
 
-    emuExitFlag = 1;
+    emulator->emuExitFlag = 1;
 #ifndef WII
-    archEventSet(emuSyncEvent);
+    archEventSet(emulator->emuSyncEvent);
 #endif
     archSoundSuspend();
-    archThreadJoin(emuThread, 3000);
+    archThreadJoin(emulator->emuThread, 3000);
     archMidiEnable(0);
-    machineDestroy(machine);
-    archThreadDestroy(emuThread);
+    machineDestroy(emulator->machine);
+    archThreadDestroy(emulator->emuThread);
 #ifndef WII
-    archEventDestroy(emuSyncEvent);
+    archEventDestroy(emulator->emuSyncEvent);
 #endif
-    archEventDestroy(emuStartEvent);
+    archEventDestroy(emulator->emuStartEvent);
 
     // Reset active indicators in mixer
-    mixerIsChannelTypeActive(mixer, MIXER_CHANNEL_MOONSOUND, 1);
-    mixerIsChannelTypeActive(mixer, MIXER_CHANNEL_YAMAHA_SFG, 1);
-    mixerIsChannelTypeActive(mixer, MIXER_CHANNEL_MSXAUDIO, 1);
-    mixerIsChannelTypeActive(mixer, MIXER_CHANNEL_MSXMUSIC, 1);
-    mixerIsChannelTypeActive(mixer, MIXER_CHANNEL_SCC, 1);
+    mixerIsChannelTypeActive(emulator->mixer, MIXER_CHANNEL_MOONSOUND, 1);
+    mixerIsChannelTypeActive(emulator->mixer, MIXER_CHANNEL_YAMAHA_SFG, 1);
+    mixerIsChannelTypeActive(emulator->mixer, MIXER_CHANNEL_MSXAUDIO, 1);
+    mixerIsChannelTypeActive(emulator->mixer, MIXER_CHANNEL_MSXMUSIC, 1);
+    mixerIsChannelTypeActive(emulator->mixer, MIXER_CHANNEL_SCC, 1);
 
     archEmulationStopNotification();
 
@@ -536,121 +589,123 @@ void emulatorStop() {
 
 
 
-void emulatorSetFrequency(int logFrequency, int* frequency) {
-    emuFrequency = (int)(3579545 * pow(2.0, (logFrequency - 50) / 15.0515));
+void emulatorSetFrequency(Emulator *emulator, int logFrequency, int* frequency) {
+    emulator->emuFrequency = (int)(3579545 * pow(2.0, (logFrequency - 50) / 15.0515));
 
     if (frequency != NULL) {
-        *frequency  = emuFrequency;
+        *frequency  = emulator->emuFrequency;
     }
 
-    boardSetFrequency(emuFrequency);
+    boardSetFrequency(emulator->emuFrequency);
 }
 
-void emulatorSuspend() {
-    if (emuState == EMU_RUNNING) {
-        emuState = EMU_SUSPENDED;
+void emulatorSuspend(Emulator *emulator) {
+    if (emulator->emuState == EMU_RUNNING) {
+        emulator->emuState = EMU_SUSPENDED;
         do {
             archThreadSleep(10);
-        } while (!emuSuspendFlag);
+        } while (!emulator->emuSuspendFlag);
         archSoundSuspend();
         archMidiEnable(0);
     }
 }
 
-void emulatorResume() {
-    if (emuState == EMU_SUSPENDED) {
-        emuSysTime = 0;
+void emulatorResume(Emulator *emulator) {
+    if (emulator->emuState == EMU_SUSPENDED) {
+        emulator->emuSysTime = 0;
 
         archSoundResume();
         archMidiEnable(1);
-        emuState = EMU_RUNNING;
+        emulator->emuState = EMU_RUNNING;
         archUpdateEmuDisplay(0);
     }
 }
 
-int emulatorGetCurrentScreenMode()
+int emulatorGetCurrentScreenMode(const Emulator *emulator)
 {
-    return lastScreenMode;
+    return emulator->lastScreenMode;
 }
 
-void emulatorRestart() {
-    Machine* machine = machineCreate(properties->emulation.machineName);
+void emulatorRestart(Emulator *emulator) {
+    Machine* machine = machineCreate(emulator->properties->emulation.machineName);
 
-    emulatorStop();
+    emulatorStop(emulator);
     if (machine != NULL) {
         boardSetMachine(machine);
         machineDestroy(machine);
     }
 }
 
-void emulatorRestartSound() {
-    emulatorSuspend();
+void emulatorRestartSound(Emulator *emulator) {
+    emulatorSuspend(emulator);
     archSoundDestroy();
-    archSoundCreate(mixer, 44100, properties->sound.bufSize, properties->sound.stereo ? 2 : 1);
-    emulatorResume();
+    archSoundCreate(emulator->mixer, 44100,
+                    emulator->properties->sound.bufSize,
+                    emulator->properties->sound.stereo ? 2 : 1);
+    emulatorResume(emulator);
 }
 
-int emulatorGetCpuOverflow() {
-    int overflow = emuTimeOverflow;
-    emuTimeOverflow = 0;
+int emulatorGetCpuOverflow(Emulator *emulator) {
+    int overflow = emulator->emuTimeOverflow;
+    emulator->emuTimeOverflow = 0;
+    
     return overflow;
 }
 
-void emulatorSetMaxSpeed(int enable) {
-    emuMaxSpeed = enable;
+void emulatorSetMaxSpeed(Emulator *emulator, int enable) {
+    emulator->emuMaxSpeed = enable;
 }
 
-int  emulatorGetMaxSpeed() {
-    return emuMaxSpeed;
+int  emulatorGetMaxSpeed(const Emulator *emulator) {
+    return emulator->emuMaxSpeed;
 }
 
-void emulatorPlayReverse(int enable)
+void emulatorSetPlayReverse(Emulator *emulator, int enable)
 {
-    if (enable) {   
+    if (enable) {
         archSoundSuspend();
     }
     else {
         archSoundResume();
     }
-    emuPlayReverse = enable;
+    emulator->emuPlayReverse = enable;
 }
 
-int  emulatorGetPlayReverse()
+int  emulatorGetPlayReverse(const Emulator *emulator)
 {
-    return emuPlayReverse;
+    return emulator->emuPlayReverse;
 }
 
-void emulatorResetMixer() {
+void emulatorResetMixer(Emulator *emulator) {
     // Reset active indicators in mixer
-    mixerIsChannelTypeActive(mixer, MIXER_CHANNEL_MOONSOUND, 1);
-    mixerIsChannelTypeActive(mixer, MIXER_CHANNEL_YAMAHA_SFG, 1);
-    mixerIsChannelTypeActive(mixer, MIXER_CHANNEL_MSXAUDIO, 1);
-    mixerIsChannelTypeActive(mixer, MIXER_CHANNEL_MSXMUSIC, 1);
-    mixerIsChannelTypeActive(mixer, MIXER_CHANNEL_SCC, 1);
-    mixerIsChannelTypeActive(mixer, MIXER_CHANNEL_PCM, 1);
-    mixerIsChannelTypeActive(mixer, MIXER_CHANNEL_IO, 1);
+    mixerIsChannelTypeActive(emulator->mixer, MIXER_CHANNEL_MOONSOUND, 1);
+    mixerIsChannelTypeActive(emulator->mixer, MIXER_CHANNEL_YAMAHA_SFG, 1);
+    mixerIsChannelTypeActive(emulator->mixer, MIXER_CHANNEL_MSXAUDIO, 1);
+    mixerIsChannelTypeActive(emulator->mixer, MIXER_CHANNEL_MSXMUSIC, 1);
+    mixerIsChannelTypeActive(emulator->mixer, MIXER_CHANNEL_SCC, 1);
+    mixerIsChannelTypeActive(emulator->mixer, MIXER_CHANNEL_PCM, 1);
+    mixerIsChannelTypeActive(emulator->mixer, MIXER_CHANNEL_IO, 1);
 }
 
-int emulatorSyncScreen()
+int emulatorSyncScreen(Emulator *emulator)
 {
     int rv = 0;
-    emuFrameskipCounter--;
-    if (emuFrameskipCounter < 0) {
-        rv = archUpdateEmuDisplay(properties->emulation.syncMethod);
+    emulator->emuFrameskipCounter--;
+    if (emulator->emuFrameskipCounter < 0) {
+        rv = archUpdateEmuDisplay(emulator->properties->emulation.syncMethod);
         if (rv) {
-            emuFrameskipCounter = properties->video.frameSkip;
+            emulator->emuFrameskipCounter = emulator->properties->video.frameSkip;
         }
     }
     return rv;
 }
 
 
-void RefreshScreen(int screenMode) {
+void RefreshScreen(Emulator *emulator, int screenMode) {
+    emulator->lastScreenMode = screenMode;
 
-    lastScreenMode = screenMode;
-
-    if (emuUseSynchronousUpdate() == P_EMU_SYNCFRAMES && emuState == EMU_RUNNING) {
-        emulatorSyncScreen();
+    if (emulatorUseSynchronousUpdate(emulator) == P_EMU_SYNCFRAMES && emulator->emuState == EMU_RUNNING) {
+        emulatorSyncScreen(emulator);
     }
 }
 
@@ -658,52 +713,52 @@ void RefreshScreen(int screenMode) {
 
 #ifdef WII
 
-static int WaitForSync(int maxSpeed, int breakpointHit)
+static int WaitForSync(Emulator *emulator, int maxSpeed, int breakpointHit)
 {
     UInt32 diffTime;
 
-    emuMaxEmuSpeed = maxSpeed;
+    emulator->emuMaxEmuSpeed = maxSpeed;
 
-    emuSuspendFlag = 1;
+    emulator->emuSuspendFlag = 1;
 
     archPollInput();
 
-    if (emuState != EMU_RUNNING) {
-        archEventSet(emuStartEvent);
+    if (emulator->emuState != EMU_RUNNING) {
+        archEventSet(emulator->emuStartEvent);
         archThreadSleep(100);
-        emuSuspendFlag = 0;
-        return emuExitFlag ? -1 : 0;
+        emulator->emuSuspendFlag = 0;
+        return emulator->emuExitFlag ? -1 : 0;
     }
 
-    emuSuspendFlag = 0;
+    emulator->emuSuspendFlag = 0;
 
-    if (emuSingleStep) {
+    if (emulator->emuSingleStep) {
         diffTime = 0;
     }else{
         diffTime = 20;
     }
 
-    if (emuMaxSpeed || emuMaxEmuSpeed) {
+    if (emulator->emuMaxSpeed || emulator->emuMaxEmuSpeed) {
         diffTime *= 10;
     }
 
-    return emuExitFlag ? -1 : diffTime;
+    return emulator->emuExitFlag ? -1 : diffTime;
 }
 
 #else
 
-int WaitReverse()
+int WaitReverse(Emulator *emulator)
 {
     boardEnableSnapshots(0);
 
     for (;;) {
         UInt32 sysTime = archGetSystemUpTime(1000);
-        UInt32 diffTime = sysTime - emuSysTime;
+        UInt32 diffTime = sysTime - emulator->emuSysTime;
         if (diffTime >= 50) {
-            emuSysTime = sysTime;
+            emulator->emuSysTime = sysTime;
             break;
         }
-        archEventWait(emuSyncEvent, -1);
+        archEventWait(emulator->emuSyncEvent, -1);
     }
 
     boardRewind();
@@ -711,7 +766,7 @@ int WaitReverse()
     return -60;
 }
 
-static int WaitForSync(int maxSpeed, int breakpointHit) {
+static int WaitForSync(Emulator *emulator, int maxSpeed, int breakpointHit) {
     UInt32 li1;
     UInt32 li2;
     static UInt32 tmp = 0;
@@ -722,53 +777,53 @@ static int WaitForSync(int maxSpeed, int breakpointHit) {
     static int overflowCount = 0;
     static UInt32 kbdPollCnt = 0;
 
-    if (emuPlayReverse && properties->emulation.reverseEnable) {
-        return WaitReverse();
+    if (emulator->emuPlayReverse && emulator->properties->emulation.reverseEnable) {
+        return WaitReverse(emulator);
     }
 
 //    boardEnableSnapshots(1); // AK TODO
 
-    emuMaxEmuSpeed = maxSpeed;
+    emulator->emuMaxEmuSpeed = maxSpeed;
 
-    syncPeriod = emulatorGetSyncPeriod();
+    syncPeriod = emulatorGetSyncPeriod(emulator);
     li1 = archGetHiresTimer();
 
-    emuSuspendFlag = 1;
+    emulator->emuSuspendFlag = 1;
 
-    if (emuSingleStep) {
+    if (emulator->emuSingleStep) {
         debuggerNotifyEmulatorPause();
-        emuSingleStep = 0;
-        emuState = EMU_PAUSED;
+        emulator->emuSingleStep = 0;
+        emulator->emuState = EMU_PAUSED;
         archSoundSuspend();
         archMidiEnable(0);
     }
 
     if (breakpointHit) {
         debuggerNotifyEmulatorPause();
-        emuState = EMU_PAUSED;
+        emulator->emuState = EMU_PAUSED;
         archSoundSuspend();
         archMidiEnable(0);
     }
 
-    if (emuState != EMU_RUNNING) {
-        archEventSet(emuStartEvent);
-        emuSysTime = 0;
+    if (emulator->emuState != EMU_RUNNING) {
+        archEventSet(emulator->emuStartEvent);
+        emulator->emuSysTime = 0;
     }
 
 #ifdef SINGLE_THREADED
-    emuExitFlag |= archPollEvent();
+    emulator->emuExitFlag |= archPollEvent();
 #endif
 
     if (((++kbdPollCnt & 0x03) >> 1) == 0) {
        archPollInput();
     }
 
-    if (emuUseSynchronousUpdate() == P_EMU_SYNCTOVBLANK) {
-        overflowCount += emulatorSyncScreen() ? 0 : 1;
-        while ((!emuExitFlag && emuState != EMU_RUNNING) || overflowCount > 0) {
-            archEventWait(emuSyncEvent, -1);
+    if (emulatorUseSynchronousUpdate(emulator) == P_EMU_SYNCTOVBLANK) {
+        overflowCount += emulatorSyncScreen(emulator) ? 0 : 1;
+        while ((!emulator->emuExitFlag && emulator->emuState != EMU_RUNNING) || overflowCount > 0) {
+            archEventWait(emulator->emuSyncEvent, -1);
 #ifdef NO_TIMERS
-            while (timerCallback(NULL) == 0) emuExitFlag |= archPollEvent();
+            while (timerCallback(emulator) == 0) emuExitFlag |= archPollEvent();
 #endif
             overflowCount--;
         }
@@ -776,42 +831,43 @@ static int WaitForSync(int maxSpeed, int breakpointHit) {
     else {
         do {
 #ifdef NO_TIMERS
-            while (timerCallback(NULL) == 0) emuExitFlag |= archPollEvent();
+            while (timerCallback(emulator) == 0) emuExitFlag |= archPollEvent();
 #endif
-            if (!emuExitFlag)
-                archEventWait(emuSyncEvent, -1);
+            if (!emulator->emuExitFlag)
+                archEventWait(emulator->emuSyncEvent, -1);
             
-            if (((emuMaxSpeed || emuMaxEmuSpeed) && !emuExitFlag) || overflowCount > 0) {
+            if (((emulator->emuMaxSpeed || emulator->emuMaxEmuSpeed)
+                 && !emulator->emuExitFlag) || overflowCount > 0) {
 #ifdef NO_TIMERS
-                while (timerCallback(NULL) == 0) emuExitFlag |= archPollEvent();
+                while (timerCallback(emulator) == 0) emuExitFlag |= archPollEvent();
 #endif
-                if (!emuExitFlag)
-                    archEventWait(emuSyncEvent, -1);
+                if (!emulator->emuExitFlag)
+                    archEventWait(emulator->emuSyncEvent, -1);
             }
             overflowCount = 0;
-        } while (!emuExitFlag && emuState != EMU_RUNNING);
+        } while (!emulator->emuExitFlag && emulator->emuState != EMU_RUNNING);
     }
 
-    emuSuspendFlag = 0;
+    emulator->emuSuspendFlag = 0;
     li2 = archGetHiresTimer();
 
-    emuTimeIdle  += li2 - li1;
-    emuTimeTotal += li2 - tmp;
+    emulator->emuTimeIdle  += li2 - li1;
+    emulator->emuTimeTotal += li2 - tmp;
     tmp = li2;
 
     sysTime = archGetSystemUpTime(1000);
-    diffTime = sysTime - emuSysTime;
-    emuSysTime = sysTime;
+    diffTime = sysTime - emulator->emuSysTime;
+    emulator->emuSysTime = sysTime;
 
-    if (emuSingleStep) {
+    if (emulator->emuSingleStep) {
         diffTime = 0;
     }
 
     if ((++cnt & 0x0f) == 0) {
-        emuCalcCpuUsage();
+        emuCalcCpuUsage(emulator);
     }
 
-    overflowCount = emulatorGetCpuOverflow() ? 1 : 0;
+    overflowCount = emulatorGetCpuOverflow(emulator) ? 1 : 0;
 #ifdef NO_HIRES_TIMERS
     if (diffTime > 50U) {
         overflowCount = 1;
@@ -823,16 +879,16 @@ static int WaitForSync(int maxSpeed, int breakpointHit) {
         diffTime = 0;
     }
 #endif
-    if (emuMaxSpeed || emuMaxEmuSpeed) {
+    if (emulator->emuMaxSpeed || emulator->emuMaxEmuSpeed) {
         diffTime *= 10;
         if (diffTime > 20 * syncPeriod) {
             diffTime =  20 * syncPeriod;
         }
     }
 
-    emuUsageCurrent += diffTime;
+    emulator->emuUsageCurrent += diffTime;
 
-    return emuExitFlag ? -99 : diffTime;
+    return emulator->emuExitFlag ? -99 : diffTime;
 }
 #endif
 
@@ -859,33 +915,33 @@ UInt32 getHiresTimer() {
 
 static UInt32 busy, total, oldTime;
 
-static int WaitForSync(int maxSpeed, int breakpointHit) {
-    emuSuspendFlag = 1;
+static int WaitForSync(Emulator *emulator, int maxSpeed, int breakpointHit) {
+    emulator->emuSuspendFlag = 1;
 
     busy += getHiresTimer() - oldTime;
 
-    emuExitFlag |= archPollEvent();
+    emulator->emuExitFlag |= archPollEvent();
 
     archPollInput();
 
     do {
         for (;;) {
             UInt32 sysTime = archGetSystemUpTime(1000);
-            UInt32 diffTime = sysTime - emuSysTime;
-            emuExitFlag |= archPollEvent();
+            UInt32 diffTime = sysTime - emulator->emuSysTime;
+            emulator->emuExitFlag |= archPollEvent();
             if (diffTime < 10) {
                 continue;
             }
-            emuSysTime += 10;
+            emulator->emuSysTime += 10;
             if (diffTime > 30) {
-                emuSysTime = sysTime;
+                emulator->emuSysTime = sysTime;
             }
             break;
         }
-    } while (!emuExitFlag && emuState != EMU_RUNNING);
+    } while (!emulator->emuExitFlag && emulator->emuState != EMU_RUNNING);
 
 
-    emuSuspendFlag = 0;
+    emulator->emuSuspendFlag = 0;
 
     total += getHiresTimer() - oldTime;
     oldTime = getHiresTimer();
@@ -898,7 +954,7 @@ static int WaitForSync(int maxSpeed, int breakpointHit) {
     }
 #endif
 
-    return emuExitFlag ? -1 : 10;
+    return emulator->emuExitFlag ? -1 : 10;
 }
 
 #endif

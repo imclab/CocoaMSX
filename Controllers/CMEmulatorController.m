@@ -422,7 +422,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
     
     mixer = mixerCreate();
     
-    emulatorInit(properties, mixer);
+    emulator = emulatorCreate(properties, mixer);
     actionInit(video, properties, mixer);
     langInit();
     tapeSetReadOnly(properties->cassette.readOnly);
@@ -439,7 +439,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
     midiIoSetMidiInType(properties->sound.MidiIn.type, properties->sound.MidiIn.fileName);
     ykIoSetMidiInType(properties->sound.YkIn.type, properties->sound.YkIn.fileName);
     
-    emulatorRestartSound();
+    emulatorRestartSound(emulator);
     
     for (int i = 0; i < MIXER_CHANNEL_TYPE_COUNT; i++)
     {
@@ -460,7 +460,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
     for (int i = 0; i < PROP_MAX_CARTS; i++)
     {
         if (properties->media.carts[i].fileName[0])
-            insertCartridge(properties, i, properties->media.carts[i].fileName,
+            insertCartridge(emulator, i, properties->media.carts[i].fileName,
                             properties->media.carts[i].fileNameInZip,
                             properties->media.carts[i].type, -1);
         
@@ -471,7 +471,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
     for (int i = 0; i < PROP_MAX_DISKS; i++)
     {
         if (properties->media.disks[i].fileName[0])
-            insertDiskette(properties, i, properties->media.disks[i].fileName,
+            insertDiskette(emulator, i, properties->media.disks[i].fileName,
                            properties->media.disks[i].fileNameInZip, -1);
         
         updateExtendedDiskName(i, properties->media.disks[i].fileName,
@@ -481,7 +481,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
     for (int i = 0; i < PROP_MAX_TAPES; i++)
     {
         if (properties->media.tapes[i].fileName[0])
-            insertCassette(properties, i, properties->media.tapes[i].fileName,
+            insertCassette(emulator, i, properties->media.tapes[i].fileName,
                            properties->media.tapes[i].fileNameInZip, 0);
         
         updateExtendedCasName(i, properties->media.tapes[i].fileName,
@@ -522,6 +522,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
     propDestroy(properties);
     archSoundDestroy(); // TODO: this doesn't belong here
     mixerDestroy(mixer);
+    emulatorDestroy(emulator);
     
     [self setIsInitialized:NO];
     
@@ -539,13 +540,13 @@ CMEmulatorController *theEmulator = nil; // FIXME
         
         if ([self fileToLoadAtStartup])
         {
-            tryLaunchUnknownFile([self properties], [[self fileToLoadAtStartup] UTF8String], YES);
+            tryLaunchUnknownFile(emulator, [[self fileToLoadAtStartup] UTF8String], YES);
             
             [self setFileToLoadAtStartup:nil];
             return;
         }
         
-        emulatorStart(NULL);
+        emulatorStart(emulator, NULL);
         
         // Pause if not focused
         [self windowKeyDidChange:[[self activeWindow] isKeyWindow]];
@@ -556,8 +557,8 @@ CMEmulatorController *theEmulator = nil; // FIXME
 {
     if ([self isInitialized] && [self isStarted])
     {
-        emulatorSuspend();
-        emulatorStop();
+        emulatorSuspend(emulator);
+        emulatorStop(emulator);
     }
     
     [self setCurrentlyLoadedCaptureFilePath:nil];
@@ -566,13 +567,13 @@ CMEmulatorController *theEmulator = nil; // FIXME
 
 - (void)pause
 {
-    emulatorSetState(EMU_PAUSED);
+    emulatorSetState(emulator, EMU_PAUSED);
     debuggerNotifyEmulatorPause();
 }
 
 - (void)resume
 {
-    emulatorSetState(EMU_RUNNING);
+    emulatorSetState(emulator, EMU_RUNNING);
     debuggerNotifyEmulatorResume();
 }
 
@@ -613,7 +614,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
 
 - (void)updateFps:(CGFloat)fps
 {
-    if (emulatorGetState() == EMU_PAUSED)
+    if (emulatorGetState(emulator) == EMU_PAUSED)
         [self setFpsDisplay:CMLoc(@"MSX Paused", @"")];
     else
         [self setFpsDisplay:[NSString stringWithFormat:CMLoc(@"FPS: %.02f", @""), fps]];
@@ -658,7 +659,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
 - (void)setEmulationSpeedAsPercentage:(NSInteger)percentage
 {
     properties->emulation.speed = [self emulationFrequencyFromPercentage:percentage];
-    emulatorSetFrequency(properties->emulation.speed, NULL);
+    emulatorSetFrequency(emulator, properties->emulation.speed, NULL);
 }
 
 #pragma mark - Machine Configuration
@@ -818,18 +819,18 @@ CMEmulatorController *theEmulator = nil; // FIXME
 
 - (BOOL)isStarted
 {
-    NSInteger machineState = emulatorGetState();
+    NSInteger machineState = emulatorGetState(emulator);
     return (machineState == EMU_RUNNING || machineState == EMU_PAUSED);
 }
 
 - (BOOL)isPaused
 {
-    return (emulatorGetState() == EMU_PAUSED);
+    return (emulatorGetState(emulator) == EMU_PAUSED);
 }
 
 - (NSInteger)machineState
 {
-    return emulatorGetState();
+    return emulatorGetState(emulator);
 }
 
 - (CMCocoaInput *)input
@@ -1057,15 +1058,15 @@ CMEmulatorController *theEmulator = nil; // FIXME
     if (![self isInitialized] || ![[NSFileManager defaultManager] fileExistsAtPath:cartridge])
         return NO;
     
-    emulatorSuspend();
+    emulatorSuspend(emulator);
     
-    if (insertCartridge(properties, slot, [cartridge UTF8String], NULL, type, 0))
+    if (insertCartridge(emulator, slot, [cartridge UTF8String], NULL, type, 0))
     {
         [[NSDocumentController sharedDocumentController] noteNewRecentDocumentURL:[NSURL fileURLWithPath:cartridge]];
         [self rebuildRecentItemsMenus];
     }
     
-    emulatorResume();
+    emulatorResume(emulator);
     
     return YES;
 }
@@ -1075,7 +1076,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
     if ([self isStarted])
         [self stop];
     
-    return tryLaunchUnknownFile(self.properties, [media UTF8String], YES) != 0;
+    return tryLaunchUnknownFile(emulator, [media UTF8String], YES) != 0;
 }
 
 - (void)insertSpecialCartridgeIntoSlot:(NSInteger)slot
@@ -1135,7 +1136,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
 - (void)insertDiskAtPath:(NSString *)path
                     slot:(NSInteger)slot
 {
-     emulatorSuspend();
+     emulatorSuspend(emulator);
      
      BOOL isDirectory;
      const char *fileCstr = [path UTF8String];
@@ -1148,20 +1149,20 @@ CMEmulatorController *theEmulator = nil; // FIXME
          // Insert directory
          
          strcpy(properties->media.disks[slot].directory, fileCstr);
-         insertDiskette(properties, slot, fileCstr, NULL, 0);
+         insertDiskette(emulator, slot, fileCstr, NULL, 0);
      }
      else
      {
          // Insert disk file
          
-         insertDiskette(properties, slot, fileCstr, NULL, 0);
+         insertDiskette(emulator, slot, fileCstr, NULL, 0);
          [[CMPreferences preferences] setDiskDirectory:path];
          
          [[NSDocumentController sharedDocumentController] noteNewRecentDocumentURL:[NSURL fileURLWithPath:path]];
          [self rebuildRecentItemsMenus];
      }
      
-     emulatorResume();
+     emulatorResume(emulator);
 }
 
 - (void)ejectDiskFromSlot:(NSInteger)slot
@@ -1171,19 +1172,19 @@ CMEmulatorController *theEmulator = nil; // FIXME
 
 - (void)insertCassetteAtPath:(NSString *)path
 {
-    emulatorSuspend();
+    emulatorSuspend(emulator);
     
     if (properties->cassette.rewindAfterInsert)
         tapeRewindNextInsert();
     
-    if (insertCassette(properties, 0, [path UTF8String], NULL, 0))
+    if (insertCassette(emulator, 0, [path UTF8String], NULL, 0))
     {
         [[NSDocumentController sharedDocumentController] noteNewRecentDocumentURL:[NSURL fileURLWithPath:path]];
         [self rebuildRecentItemsMenus];
         [[CMPreferences preferences] setCassetteDirectory:path];
     }
     
-    emulatorResume();
+    emulatorResume(emulator);
 }
 
 - (BOOL)saveStateToFile:(NSString *)file
@@ -1191,9 +1192,9 @@ CMEmulatorController *theEmulator = nil; // FIXME
     if (![self isInitialized])
         return NO;
     
-    emulatorSuspend();
+    emulatorSuspend(emulator);
     boardSaveState([file UTF8String], 1);
-    emulatorResume();
+    emulatorResume(emulator);
     
     NSInteger iconStyle = CMGetIntPref(@"snapshotIconStyle");
     
@@ -1767,7 +1768,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
 
 - (void)pauseMsx:(id)sender
 {
-    NSInteger machineState = emulatorGetState();
+    NSInteger machineState = emulatorGetState(emulator);
     
     if (machineState == EMU_PAUSED)
     {
@@ -1784,7 +1785,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
     if (!self.isInitialized)
         return;
     
-    NSInteger emulatorState = emulatorGetState();
+    NSInteger emulatorState = emulatorGetState(emulator);
     if (emulatorState != EMU_RUNNING && emulatorState != EMU_PAUSED)
         return;
     
@@ -1795,9 +1796,9 @@ CMEmulatorController *theEmulator = nil; // FIXME
     {
         if (file)
         {
-            emulatorSuspend();
-            emulatorStop();
-            emulatorStart([file UTF8String]);
+            emulatorSuspend(emulator);
+            emulatorStop(emulator);
+            emulatorStart(emulator, [file UTF8String]);
             
             [[CMPreferences preferences] setSnapshotDirectory:path];
         }
@@ -1809,7 +1810,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
     if (![self isInitialized] || ![self isStarted])
         return;
     
-    emulatorSuspend();
+    emulatorSuspend(emulator);
     
     [self showSaveFileDialogWithTitle:CMLoc(@"Save Snapshot", @"Dialog title")
                      allowedFileTypes:stateFileTypes
@@ -1823,7 +1824,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
              [self saveStateToFile:file];
          }
          
-         emulatorResume();
+         emulatorResume(emulator);
      }];
 }
 
@@ -1832,7 +1833,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
     if (!self.isInitialized || ![self isStarted])
         return;
     
-    emulatorSuspend();
+    emulatorSuspend(emulator);
     
     [self showSaveFileDialogWithTitle:CMLoc(@"Save Screenshot", @"Dialog title")
                      allowedFileTypes:[NSArray arrayWithObjects:@"png", nil]
@@ -1850,7 +1851,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
              }
          }
          
-         emulatorResume();
+         emulatorResume(emulator);
      }];
 }
 
@@ -1863,7 +1864,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
         mixerStopLog(mixer);
     else
     {
-        emulatorSuspend();
+        emulatorSuspend(emulator);
         
         [self showSaveFileDialogWithTitle:CMLoc(@"Record Audio", @"Dialog title")
                          allowedFileTypes:captureAudioTypes
@@ -1876,7 +1877,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
                  [CMPreferences preferences].audioCaptureDirectory = path;
              }
              
-             emulatorResume();
+             emulatorResume(emulator);
          }];
     }
 }
@@ -1888,7 +1889,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
     
     if (!boardCaptureIsRecording())
     {
-        emulatorSuspend();
+        emulatorSuspend(emulator);
         
         [self cleanupTemporaryCaptureFile];
         
@@ -1906,7 +1907,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
             boardCaptureStart(properties->filehistory.videocap);
         }
         
-        emulatorResume();
+        emulatorResume(emulator);
     }
 }
 
@@ -1915,7 +1916,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
     if (!self.isInitialized || ![self isStarted])
         return;
     
-    emulatorSuspend();
+    emulatorSuspend(emulator);
     
     [self showOpenFileDialogWithTitle:CMLoc(@"Load Gameplay Recording", @"Dialog title")
                      allowedFileTypes:captureGameplayTypes
@@ -1932,12 +1933,12 @@ CMEmulatorController *theEmulator = nil; // FIXME
              
              strncpy(properties->filehistory.videocap, recording, PROP_MAXPATH - 1);
              
-             emulatorStop();
-             emulatorStart(recording);
+             emulatorStop(emulator);
+             emulatorStart(emulator, recording);
          }
          else
          {
-             emulatorResume();
+             emulatorResume(emulator);
          }
      }];
 }
@@ -1949,7 +1950,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
     
     if ([self currentlyLoadedCaptureFilePath] && !boardCaptureIsRecording())
     {
-        emulatorSuspend();
+        emulatorSuspend(emulator);
         
         [self showSaveFileDialogWithTitle:CMLoc(@"Save Gameplay Recording", @"Dialog title")
                          allowedFileTypes:captureGameplayTypes
@@ -1983,7 +1984,7 @@ CMEmulatorController *theEmulator = nil; // FIXME
                  }
              }
              
-             emulatorResume();
+             emulatorResume(emulator);
          }];
     }
 }
@@ -1995,9 +1996,9 @@ CMEmulatorController *theEmulator = nil; // FIXME
     
     if (boardCaptureIsRecording() || boardCaptureIsPlaying())
     {
-        emulatorSuspend();
+        emulatorSuspend(emulator);
         boardCaptureStop();
-        emulatorResume();
+        emulatorResume(emulator);
     }
 }
 
@@ -2008,14 +2009,14 @@ CMEmulatorController *theEmulator = nil; // FIXME
     {
         if ([self machineState] != EMU_STOPPED)
         {
-            emulatorSuspend();
-            emulatorStop();
+            emulatorSuspend(emulator);
+            emulatorStop(emulator);
         }
         
         const char *recording = [[self currentlyLoadedCaptureFilePath] UTF8String];
         strncpy(properties->filehistory.videocap, recording, PROP_MAXPATH - 1);
         
-        emulatorStart(recording);
+        emulatorStart(emulator, recording);
     }
 }
 
@@ -2448,9 +2449,9 @@ void archTrap(UInt8 value)
           (int)romType, romName);
 #endif
     
-    emulatorSuspend();
-    insertCartridge(self.properties, slot, romName, NULL, romType, 0);
-    emulatorResume();
+    emulatorSuspend(emulator);
+    insertCartridge(emulator, slot, romName, NULL, romType, 0);
+    emulatorResume(emulator);
 }
 
 #pragma mark - CassetteRepositionDelegate
@@ -2461,9 +2462,9 @@ void archTrap(UInt8 value)
     NSLog(@"EmulatorController:cassetteRepositionedTo:%d", (int)position);
 #endif
     
-    emulatorSuspend();
+    emulatorSuspend(emulator);
     tapeSetCurrentPos(position);
-    emulatorResume();
+    emulatorResume(emulator);
 }
 
 #pragma mark - NSUserInterfaceValidation
